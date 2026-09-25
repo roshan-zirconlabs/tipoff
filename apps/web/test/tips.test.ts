@@ -25,6 +25,7 @@ function program(hit?: Partial<HitView>): ProgramView {
     withdrawn: null,
     metadata: { v: 1, title: "t", brief: "", sponsorName: "", candidateKind: CandidateKind.Wallet },
     evidence: { v: 1, kind: "none" },
+    evidenceSpecRaw: "0x",
     createdTx: `0x${"00".repeat(32)}`,
     hits: hit
       ? [

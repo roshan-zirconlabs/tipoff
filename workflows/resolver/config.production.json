@@ -1,0 +1,8 @@
+{
+  "chainSelectorName": "monad-mainnet",
+  "tipoff": "0x0000000000000000000000000000000000000000",
+  "usdc": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+  "treasuries": ["0x0000000000000000000000000000000000000000"],
+  "evidenceApi": "https://tipoff.example/api/evidence",
+  "gasLimit": "600000"
+}

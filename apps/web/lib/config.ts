@@ -29,12 +29,18 @@ export function chainFor(chainId: number): Chain {
 
 export const chain = chainFor(config.chainId);
 
+/** MonadVision is where Tipoff's source is verified (Sourcify), so link there rather than viem's default. */
+const EXPLORERS: Record<number, string> = {
+  143: "https://monadvision.com",
+  10143: "https://testnet.monadvision.com",
+};
+
+const explorer = EXPLORERS[config.chainId] ?? chain.blockExplorers?.default.url ?? null;
+
 export function explorerTx(hash: string): string | null {
-  const base = chain.blockExplorers?.default.url;
-  return base ? `${base}/tx/${hash}` : null;
+  return explorer ? `${explorer}/tx/${hash}` : null;
 }
 
 export function explorerAddress(address: string): string | null {
-  const base = chain.blockExplorers?.default.url;
-  return base ? `${base}/address/${address}` : null;
+  return explorer ? `${explorer}/address/${address}` : null;
 }

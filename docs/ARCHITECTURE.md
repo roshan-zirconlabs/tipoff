@@ -354,6 +354,11 @@ the ArbitraX track-record idea turned onto sponsors.
 
 ## 8. Addresses & network constants (verified from official docs)
 
+**Deployed:** Tipoff on Monad testnet at `0x196d4119944CD005AD917466B8e2e2Ec018FA547` (start block 65,647,989),
+owner/fee recipient `0x02847D22…b213`, relayer `0xA1EEDaB2…E634`, forwarder = CRE simulation forwarder. Testnet USDC
+permit domain verified on-chain: name `USDC`, version `2` (no EIP-5267).
+
+
 | | Mainnet | Testnet |
 |---|---|---|
 | Chain ID | 143 | 10143 |

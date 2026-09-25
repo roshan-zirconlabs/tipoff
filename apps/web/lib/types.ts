@@ -39,6 +39,8 @@ export type ProgramView = {
   withdrawn: string | null;
   metadata: ProgramMetadata;
   evidence: EvidenceSpec;
+  /** The exact bytes committed on-chain (keccak256 = Program.evidenceHash). */
+  evidenceSpecRaw: Hex;
   createdTx: Hex;
   hits: HitView[];
 };

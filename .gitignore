@@ -16,3 +16,4 @@ contracts/broadcast/*/31337/
 packages/core/src/deployments/local.json
 .tipoff/
 contracts/deployments/31337.json
+contracts/broadcast/**/dry-run/

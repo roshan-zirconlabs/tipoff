@@ -1,9 +1,12 @@
-// One command for the whole local stack:
-//   anvil (Monad execution rules) → deploy → seed a demo program with sealed tips → local evidence resolver → next dev
+// One command for the whole stack.
 //
-// The resolver here stands in for the Chainlink CRE workflow: it runs the same pure `matchPayments` from
-// @tipoff/core against USDC transfers and delivers reports to Tipoff.onReport as the configured forwarder. It also
-// settles hits whose claim window has closed (the keeper role).
+//   node scripts/dev.ts                    local: anvil (Monad rules) → deploy → seed demo → resolver + keeper → next dev
+//   node scripts/dev.ts --network testnet  Monad testnet: the deployed contract (contracts/deployments/10143.json) →
+//                                          keeper → next dev. Evidence comes from the Chainlink CRE workflow there.
+//
+// Locally, the resolver stands in for the CRE workflow: it runs the same pure `matchPayments` from @tipoff/core against
+// USDC transfers and delivers reports to Tipoff.onReport as the configured forwarder. The keeper settles hits whose
+// claim window has closed (settle is permissionless).
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -28,15 +31,18 @@ import {
   createTestClient,
   createWalletClient,
   encodeAbiParameters,
+  encodeEventTopics,
   erc20Abi,
   type Hex,
   http,
+  type Log,
+  type PublicClient,
   parseEther,
   parseEventLogs,
   parseUnits,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { foundry } from "viem/chains";
+import { type Chain, foundry, monadTestnet } from "viem/chains";
 
 const root = join(import.meta.dirname, "..");
 const RPC = "http://127.0.0.1:8545";
@@ -83,7 +89,77 @@ function demoAccount(seed: string) {
   return { account: privateKeyToAccount(bytesToHex(keys.evmSecret)), sealPublic: keys.sealPublic };
 }
 
+const NETWORK = process.argv.includes("--network") ? process.argv[process.argv.indexOf("--network") + 1] : "local";
+
+type Deployment = { tipoff: Address; usdc: Address; startBlock: number };
+
+function readEnvFile(path: string): Record<string, string> {
+  try {
+    return Object.fromEntries(
+      readFileSync(path, "utf8")
+        .split("\n")
+        .filter((l) => /^[A-Z0-9_]+=/.test(l))
+        .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function startWeb() {
+  const next = spawn(join(root, "apps", "web", "node_modules", ".bin", "next"), ["dev", "--port", "3000"], {
+    cwd: join(root, "apps", "web"),
+    stdio: "inherit",
+    env: process.env,
+  });
+  children.push(next);
+  log("web", "http://localhost:3000");
+}
+
+async function testnet() {
+  const TESTNET_RPC = "https://testnet-rpc.monad.xyz";
+  const dep = JSON.parse(readFileSync(join(root, "contracts", "deployments", "10143.json"), "utf8")) as Deployment;
+  const secrets = readEnvFile(join(root, "apps", "web", ".env.testnet"));
+  const relayerKey = secrets.RELAYER_PRIVATE_KEY as Hex | undefined;
+  if (!relayerKey) throw new Error("apps/web/.env.testnet needs RELAYER_PRIVATE_KEY");
+  const logsRpc = secrets.LOGS_RPC_URL;
+
+  writeFileSync(
+    join(root, "apps", "web", ".env.local"),
+    [
+      "# Written by scripts/dev.ts --network testnet. Secrets come from .env.testnet.",
+      "NEXT_PUBLIC_CHAIN_ID=10143",
+      `NEXT_PUBLIC_RPC_URL=${TESTNET_RPC}`,
+      `NEXT_PUBLIC_TIPOFF_ADDRESS=${dep.tipoff}`,
+      `NEXT_PUBLIC_USDC_ADDRESS=${dep.usdc}`,
+      `NEXT_PUBLIC_START_BLOCK=${dep.startBlock}`,
+      "NEXT_PUBLIC_FEE_BPS=50",
+      "NEXT_PUBLIC_DEV_TOOLS=0",
+      `RELAYER_PRIVATE_KEY=${relayerKey}`,
+      ...(logsRpc ? [`LOGS_RPC_URL=${logsRpc}`] : []),
+      "",
+    ].join("\n"),
+  );
+  log("deploy", `Monad testnet · Tipoff ${dep.tipoff} · USDC ${dep.usdc}${logsRpc ? " · logs via HyperRPC" : ""}`);
+
+  const client = createPublicClient({ chain: monadTestnet, transport: http(TESTNET_RPC) });
+  const logsClient = logsRpc ? createPublicClient({ chain: monadTestnet, transport: http(logsRpc) }) : client;
+  startWorker({
+    client,
+    logsClient,
+    chain: monadTestnet,
+    rpc: TESTNET_RPC,
+    dep,
+    account: privateKeyToAccount(relayerKey),
+    evidence: false,
+    chunk: logsRpc ? 10_000n : 100n,
+  });
+  startWeb();
+}
+
 async function main() {
+  if (NETWORK === "testnet") return testnet();
+  if (NETWORK !== "local") throw new Error(`Unknown network ${NETWORK}`);
   const anvil = spawn("anvil", ["--network", "monad", "--chain-id", "31337", "--port", "8545", "--silent"], {
     stdio: "inherit",
   });
@@ -98,11 +174,7 @@ async function main() {
     ["script", "script/Deploy.s.sol:Deploy", "--rpc-url", RPC, "--private-key", DEPLOYER, "--broadcast", "--silent"],
     { cwd: join(root, "contracts"), env: { FORWARDER: resolverAccount.address } },
   );
-  const dep = JSON.parse(readFileSync(join(root, "contracts", "deployments", "31337.json"), "utf8")) as {
-    tipoff: Address;
-    usdc: Address;
-    startBlock: number;
-  };
+  const dep = JSON.parse(readFileSync(join(root, "contracts", "deployments", "31337.json"), "utf8")) as Deployment;
   log("deploy", `Tipoff ${dep.tipoff} · USDC ${dep.usdc}`);
 
   writeFileSync(
@@ -123,15 +195,17 @@ async function main() {
   );
 
   await seed(client, dep);
-  startResolver(client, dep, resolverAccount);
-
-  const next = spawn(join(root, "apps", "web", "node_modules", ".bin", "next"), ["dev", "--port", "3000"], {
-    cwd: join(root, "apps", "web"),
-    stdio: "inherit",
-    env: process.env,
+  startWorker({
+    client,
+    logsClient: client,
+    chain: foundry,
+    rpc: RPC,
+    dep,
+    account: resolverAccount,
+    evidence: true,
+    chunk: 10_000n,
   });
-  children.push(next);
-  log("web", "http://localhost:3000");
+  startWeb();
 }
 
 async function seed(client: ReturnType<typeof createPublicClient>, dep: { tipoff: Address; usdc: Address }) {
@@ -233,101 +307,144 @@ async function seed(client: ReturnType<typeof createPublicClient>, dep: { tipoff
   log("seed", `demo program ${programId} with ${DEMO_SCOUT_SEEDS.length} sealed tips`);
 }
 
-function startResolver(
-  client: ReturnType<typeof createPublicClient>,
-  dep: { tipoff: Address; usdc: Address; startBlock: number },
-  account: ReturnType<typeof privateKeyToAccount>,
+/**
+ * Incremental, chunked log scanner. Monad's public RPCs cap eth_getLogs at 100 blocks, so ranges are split and fetched
+ * a few at a time; results are appended in block order.
+ */
+function scanner(
+  logsClient: PublicClient,
+  fromBlock: bigint,
+  chunk: bigint,
+  filter: { address: Address; topics?: (Hex | Hex[] | null)[] },
 ) {
-  const wallet = createWalletClient({ account, chain: foundry, transport: http(RPC) });
+  let next = fromBlock;
+  return async (toBlock: bigint): Promise<Log[]> => {
+    const ranges: [bigint, bigint][] = [];
+    for (let f = next; f <= toBlock; f += chunk) ranges.push([f, f + chunk - 1n < toBlock ? f + chunk - 1n : toBlock]);
+    const out: Log[] = [];
+    for (let i = 0; i < ranges.length; i += 6) {
+      const batch = ranges.slice(i, i + 6);
+      const results = await Promise.all(
+        batch.map(
+          ([a, b]) =>
+            logsClient.request({
+              method: "eth_getLogs",
+              params: [
+                {
+                  address: filter.address,
+                  topics: filter.topics,
+                  fromBlock: `0x${a.toString(16)}`,
+                  toBlock: `0x${b.toString(16)}`,
+                },
+              ],
+            }) as Promise<Log[]>,
+        ),
+      );
+      for (const r of results) out.push(...r);
+      next = (batch[batch.length - 1]?.[1] ?? next - 1n) + 1n;
+    }
+    return out;
+  };
+}
+
+function startWorker(opts: {
+  client: PublicClient;
+  logsClient: PublicClient;
+  chain: Chain;
+  rpc: string;
+  dep: Deployment;
+  account: ReturnType<typeof privateKeyToAccount>;
+  /** Deliver evidence reports as the forwarder (local only; CRE does this on real networks). */
+  evidence: boolean;
+  chunk: bigint;
+}) {
+  const { client, dep, account } = opts;
+  const wallet = createWalletClient({ account, chain: opts.chain, transport: http(opts.rpc) });
   const metadata = `0x${"00".repeat(64)}` as Hex; // workflow checks are off locally
-  const reported = new Set<string>();
-  const settled = new Set<string>();
+  const start = BigInt(dep.startBlock);
+  const scanTipoff = scanner(opts.logsClient, start, opts.chunk, { address: dep.tipoff });
+  const scanUsdc = scanner(opts.logsClient, start, opts.chunk, {
+    address: dep.usdc,
+    topics: [encodeEventTopics({ abi: erc20Abi, eventName: "Transfer" })[0] as Hex],
+  });
+  const events: ReturnType<typeof parseEventLogs<typeof tipoffAbi>> = [];
   const transfers: TransferEvidence[] = [];
   const timestamps = new Map<bigint, bigint>();
-  let from = BigInt(dep.startBlock);
+  const reported = new Set<string>();
+  const settled = new Set<string>();
   let busy = false;
+
+  const blockTime = async (n: bigint) => {
+    if (!timestamps.has(n)) timestamps.set(n, (await client.getBlock({ blockNumber: n })).timestamp);
+    return timestamps.get(n) as bigint;
+  };
 
   const tick = async () => {
     if (busy) return;
     busy = true;
     try {
       const latest = await client.getBlock();
-      if (latest.number >= from) {
-        const logs = await client.getContractEvents({
-          address: dep.usdc,
-          abi: erc20Abi,
-          eventName: "Transfer",
-          fromBlock: from,
-          toBlock: latest.number,
-        });
-        for (const l of logs) {
-          if (!timestamps.has(l.blockNumber)) {
-            timestamps.set(l.blockNumber, (await client.getBlock({ blockNumber: l.blockNumber })).timestamp);
-          }
+      events.push(...parseEventLogs({ abi: tipoffAbi, logs: await scanTipoff(latest.number) }));
+
+      if (opts.evidence) {
+        for (const l of parseEventLogs({ abi: erc20Abi, logs: await scanUsdc(latest.number), eventName: "Transfer" })) {
           transfers.push({
             token: dep.usdc,
-            from: l.args.from as Address,
-            to: l.args.to as Address,
-            value: l.args.value as bigint,
-            timestamp: timestamps.get(l.blockNumber) ?? 0n,
+            from: l.args.from,
+            to: l.args.to,
+            value: l.args.value,
+            timestamp: await blockTime(l.blockNumber),
             txHash: l.transactionHash,
           });
         }
-        from = latest.number + 1n;
-      }
-
-      const events = await client.getContractEvents({
-        address: dep.tipoff,
-        abi: tipoffAbi,
-        fromBlock: BigInt(dep.startBlock),
-      });
-      const programs: ResolvableProgram[] = [];
-      for (const e of events) {
-        if (e.eventName !== "ProgramCreated") continue;
-        const block = await client.getBlock({ blockNumber: e.blockNumber });
-        programs.push({
-          programId: e.args.programId as bigint,
-          createdAt: block.timestamp,
-          tailEnd: e.args.tailEnd as bigint,
-          spec: decodeEvidenceSpec(e.args.evidenceSpec as Hex),
-        });
-      }
-      const acted = new Set(
-        events.filter((e) => e.eventName === "CandidateActed").map((e) => `${e.args.programId}:${e.args.candidateId}`),
-      );
-
-      for (const r of matchPayments(programs, transfers, dep.tipoff)) {
-        const key = `${r.programId}:${r.candidateId}`;
-        if (acted.has(key) || reported.has(key)) continue;
-        reported.add(key);
-        const report = encodeAbiParameters(
-          [{ type: "uint256" }, { type: "bytes32" }, { type: "uint64" }, { type: "bytes32" }],
-          [r.programId, r.candidateId, r.actedAt, r.evidenceRef],
-        );
-        try {
-          await client.waitForTransactionReceipt({
-            hash: await wallet.writeContract({
-              address: dep.tipoff,
-              abi: tipoffAbi,
-              functionName: "onReport",
-              args: [metadata, report],
-            }),
+        const programs: ResolvableProgram[] = [];
+        for (const e of events) {
+          if (e.eventName !== "ProgramCreated") continue;
+          programs.push({
+            programId: e.args.programId,
+            createdAt: await blockTime(e.blockNumber),
+            tailEnd: e.args.tailEnd,
+            spec: decodeEvidenceSpec(e.args.evidenceSpec),
           });
-          log("resolver", `evidence: treasury paid ${r.paidTo} → program ${r.programId} hit recorded`);
-        } catch (err) {
-          log("resolver", `report rejected for program ${r.programId}: ${(err as Error).message.split("\n")[0]}`);
+        }
+        const acted = new Set(
+          events.flatMap((e) =>
+            e.eventName === "CandidateActed" ? [`${e.args.programId}:${e.args.candidateId}`] : [],
+          ),
+        );
+        for (const r of matchPayments(programs, transfers, dep.tipoff)) {
+          const key = `${r.programId}:${r.candidateId}`;
+          if (acted.has(key) || reported.has(key)) continue;
+          reported.add(key);
+          const report = encodeAbiParameters(
+            [{ type: "uint256" }, { type: "bytes32" }, { type: "uint64" }, { type: "bytes32" }],
+            [r.programId, r.candidateId, r.actedAt, r.evidenceRef],
+          );
+          try {
+            await client.waitForTransactionReceipt({
+              hash: await wallet.writeContract({
+                address: dep.tipoff,
+                abi: tipoffAbi,
+                functionName: "onReport",
+                args: [metadata, report],
+              }),
+            });
+            log("resolver", `evidence: treasury paid ${r.paidTo} → program ${r.programId} hit recorded`);
+          } catch (err) {
+            log("resolver", `report rejected for program ${r.programId}: ${(err as Error).message.split("\n")[0]}`);
+          }
         }
       }
 
       // Keeper: pay out hits whose claim window closed.
       const done = new Set(
-        events.filter((e) => e.eventName === "HitSettled").map((e) => `${e.args.programId}:${e.args.candidateId}`),
+        events.flatMap((e) => (e.eventName === "HitSettled" ? [`${e.args.programId}:${e.args.candidateId}`] : [])),
       );
       for (const e of events) {
         if (e.eventName !== "CandidateActed") continue;
         const key = `${e.args.programId}:${e.args.candidateId}`;
-        if (done.has(key) || settled.has(key) || (e.args.reward as bigint) === 0n) continue;
-        if ((e.args.claimDeadline as bigint) >= latest.timestamp) continue;
+        if (done.has(key) || settled.has(key) || e.args.reward === 0n) continue;
+        if (e.args.claimDeadline >= latest.timestamp) continue;
         settled.add(key);
         try {
           await client.waitForTransactionReceipt({
@@ -335,23 +452,26 @@ function startResolver(
               address: dep.tipoff,
               abi: tipoffAbi,
               functionName: "settle",
-              args: [e.args.programId as bigint, e.args.candidateId as Hex],
+              args: [e.args.programId, e.args.candidateId],
             }),
           });
-          log("keeper", `settled program ${e.args.programId} hit ${String(e.args.candidateId).slice(0, 10)}…`);
+          log("keeper", `settled program ${e.args.programId} hit ${e.args.candidateId.slice(0, 10)}…`);
         } catch (err) {
           settled.delete(key);
           log("keeper", `settle failed: ${(err as Error).message.split("\n")[0]}`);
         }
       }
     } catch (err) {
-      log("resolver", `tick failed: ${(err as Error).message.split("\n")[0]}`);
+      log("worker", `tick failed: ${(err as Error).message.split("\n")[0]}`);
     } finally {
       busy = false;
     }
   };
-  setInterval(tick, 2000);
-  log("resolver", `watching treasuries as forwarder ${account.address}`);
+  setInterval(tick, opts.evidence ? 2000 : 5000);
+  log(
+    opts.evidence ? "resolver" : "keeper",
+    `${opts.evidence ? "watching treasuries and " : ""}settling hits as ${account.address}`,
+  );
 }
 
 main().catch((err) => {

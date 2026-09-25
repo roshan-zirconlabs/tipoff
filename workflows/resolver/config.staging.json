@@ -1,0 +1,8 @@
+{
+  "chainSelectorName": "monad-testnet",
+  "tipoff": "0x196d4119944CD005AD917466B8e2e2Ec018FA547",
+  "usdc": "0x534b2f3A21130d7a60830c2Df862319e593943A3",
+  "treasuries": ["0x02847D22C33f5F060Bd27e69F1a413AD44cab213"],
+  "evidenceApi": "http://localhost:3000/api/evidence",
+  "gasLimit": "600000"
+}

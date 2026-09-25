@@ -371,6 +371,15 @@ export function SponsorForm() {
                   >
                     Mint test USDC
                   </button>
+                ) : short && config.chainId === 10143 ? (
+                  <a
+                    className="ml-2 underline underline-offset-4"
+                    href="https://faucet.circle.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Get testnet USDC
+                  </a>
                 ) : null}
               </p>
             ) : null}

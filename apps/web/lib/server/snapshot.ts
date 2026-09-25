@@ -1,8 +1,9 @@
 import "server-only";
 import { decodeEvidenceSpec, decodeMetadata, tipoffAbi } from "@tipoff/core";
 import type { Address, Hex, Log } from "viem";
-import { parseEventLogs } from "viem";
-import { config } from "../config";
+import { createPublicClient, http, parseEventLogs } from "viem";
+import { chain, config } from "../config";
+import { ENVIO_QUERY, type EnvioData, snapshotFromEnvio } from "../envio-map";
 import type { HitView, ProgramView, Snapshot, TipView } from "../types";
 import { publicClient } from "./chain";
 
@@ -11,7 +12,12 @@ import { publicClient } from "./chain";
 
 type TipoffLog = ReturnType<typeof parseEventLogs<typeof tipoffAbi>>[number];
 
-const CHUNK = BigInt(process.env.LOG_CHUNK_BLOCKS ?? 5_000);
+// Monad's public RPCs cap eth_getLogs at 100 blocks (~40 s of chain). Envio HyperRPC has no such cap: set
+// LOGS_RPC_URL to it (with an API token) and raise LOG_CHUNK_BLOCKS. Local anvil has no cap either.
+const LOGS_RPC_URL = process.env.LOGS_RPC_URL;
+const logsClient = LOGS_RPC_URL ? createPublicClient({ chain, transport: http(LOGS_RPC_URL) }) : publicClient;
+const CHUNK = BigInt(process.env.LOG_CHUNK_BLOCKS ?? (config.chainId === 31337 || LOGS_RPC_URL ? 10_000 : 100));
+const CONCURRENCY = Number(process.env.LOG_CONCURRENCY ?? 6);
 
 const cache: { toBlock: bigint; genesisHash: Hex | null; logs: TipoffLog[]; timestamps: Map<bigint, number> } = {
   toBlock: config.startBlock - 1n,
@@ -28,11 +34,18 @@ async function sync(): Promise<{ block: bigint; now: number }> {
     cache.logs = [];
     cache.timestamps.clear();
   }
+  const ranges: [bigint, bigint][] = [];
   for (let from = cache.toBlock + 1n; from <= latest.number; from += CHUNK) {
-    const to = from + CHUNK - 1n < latest.number ? from + CHUNK - 1n : latest.number;
-    const raw: Log[] = await publicClient.getLogs({ address: config.tipoff, fromBlock: from, toBlock: to });
-    cache.logs.push(...parseEventLogs({ abi: tipoffAbi, logs: raw }));
-    cache.toBlock = to;
+    ranges.push([from, from + CHUNK - 1n < latest.number ? from + CHUNK - 1n : latest.number]);
+  }
+  // Fetch in parallel batches, append strictly in block order.
+  for (let i = 0; i < ranges.length; i += CONCURRENCY) {
+    const batch = ranges.slice(i, i + CONCURRENCY);
+    const results: Log[][] = await Promise.all(
+      batch.map(([fromBlock, toBlock]) => logsClient.getLogs({ address: config.tipoff, fromBlock, toBlock })),
+    );
+    for (const raw of results) cache.logs.push(...parseEventLogs({ abi: tipoffAbi, logs: raw }));
+    cache.toBlock = batch[batch.length - 1]?.[1] ?? cache.toBlock;
   }
   await fillTimestamps();
   return { block: latest.number, now: Number(latest.timestamp) };
@@ -61,10 +74,27 @@ let inflight: Promise<Snapshot> | null = null;
 
 /** Current protocol state. Concurrent callers share one sync. */
 export function loadSnapshot(): Promise<Snapshot> {
-  inflight ??= build().finally(() => {
+  inflight ??= (process.env.ENVIO_GRAPHQL_URL ? buildFromEnvio(process.env.ENVIO_GRAPHQL_URL) : build()).finally(() => {
     inflight = null;
   });
   return inflight;
+}
+
+/** The indexed path: one GraphQL round trip to Envio instead of scanning logs. Chain head still comes from the RPC. */
+async function buildFromEnvio(url: string): Promise<Snapshot> {
+  const [head, res] = await Promise.all([
+    publicClient.getBlock({ blockTag: "latest" }),
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: ENVIO_QUERY, variables: { limit: 1000 } }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    }),
+  ]);
+  const json = (await res.json()) as { data?: EnvioData; errors?: { message: string }[] };
+  if (!res.ok || !json.data) throw new Error(`Envio query failed: ${json.errors?.[0]?.message ?? res.status}`);
+  return snapshotFromEnvio(json.data, { now: Number(head.timestamp), block: Number(head.number) });
 }
 
 async function build(): Promise<Snapshot> {
@@ -97,6 +127,7 @@ async function build(): Promise<Snapshot> {
           withdrawn: null,
           metadata: decodeMetadata(a.metadata),
           evidence: decodeEvidenceSpec(a.evidenceSpec),
+          evidenceSpecRaw: a.evidenceSpec,
           createdTx: log.transactionHash,
           hits: [],
         });

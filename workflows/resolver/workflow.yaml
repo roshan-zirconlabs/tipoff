@@ -1,0 +1,16 @@
+# Tipoff evidence resolver — CRE workflow settings.
+staging-settings:
+  user-workflow:
+    workflow-name: "tipoff-resolver-staging"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.staging.json"
+    secrets-path: ""
+
+production-settings:
+  user-workflow:
+    workflow-name: "tipoff-resolver-production"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""

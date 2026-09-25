@@ -1,0 +1,10 @@
+# Tipoff CRE project settings. RPC URLs may reference ${VAR} from .env (never committed).
+staging-settings:
+  rpcs:
+    - chain-name: monad-testnet
+      url: https://testnet-rpc.monad.xyz
+
+production-settings:
+  rpcs:
+    - chain-name: monad-mainnet
+      url: https://rpc.monad.xyz

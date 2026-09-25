@@ -1,0 +1,77 @@
+# Every entity is derived only from Tipoff's own events, mirroring apps/web/lib/server/snapshot.ts.
+
+type Program {
+  id: ID!
+  sponsor: String! @index
+  token: String!
+  bounty: BigInt!
+  available: BigInt!
+  rewardPerHit: BigInt!
+  tipDeadline: BigInt!
+  tailEnd: BigInt!
+  claimWindow: BigInt!
+  topK: Int!
+  maxTipsPerScout: Int!
+  sealKey: String!
+  evidenceSpec: String!
+  metadata: String!
+  createdAt: BigInt!
+  createdTx: String!
+  tipCount: Int!
+  openHits: Int!
+  withdrawn: BigInt
+}
+
+type Tip {
+  id: ID!
+  programId: String! @index
+  scout: String! @index
+  commitment: String!
+  committedAt: BigInt!
+  sponsorEnvelope: String!
+  scoutEnvelope: String!
+  proven: Boolean!
+  "Hit id (programId:candidateId) this tip was proven for."
+  provenFor: String @index
+  txHash: String!
+}
+
+type Hit {
+  id: ID!
+  programId: String! @index
+  candidateId: String!
+  source: String!
+  actedAt: BigInt!
+  claimDeadline: BigInt!
+  reward: BigInt!
+  settled: Boolean!
+  evidenceRef: String!
+  actedTx: String!
+  fee: BigInt!
+  returned: BigInt!
+}
+
+type Payout {
+  id: ID!
+  hitId: String! @index
+  programId: String!
+  tipId: BigInt!
+  scout: String! @index
+  amount: BigInt!
+}
+
+type Scout {
+  id: ID!
+  tips: Int!
+  wins: Int!
+  earned: BigInt!
+}
+
+type Sponsor {
+  id: ID!
+  programs: Int!
+  committed: BigInt!
+  bySponsor: Int!
+  byEvidence: Int!
+  paidToScouts: BigInt!
+}

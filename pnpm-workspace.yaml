@@ -1,6 +1,11 @@
 packages:
   - apps/*
   - packages/*
+  - workflows/*
+  - indexer
+allowBuilds:
+  bun: true
+  esbuild: true
 minimumReleaseAgeExclude:
   - '@vitest/mocker@5.0.2'
   - '@vitest/spy@5.0.2'
@@ -9,3 +14,8 @@ minimumReleaseAgeExclude:
   - framer-motion@13.4.4
   - motion-dom@13.4.4
   - motion@13.4.4
+# @chainlink/cre-sdk's cre-compile imports `typescript` at build time without declaring it; link the workflow's copy.
+packageExtensions:
+  '@chainlink/cre-sdk':
+    peerDependencies:
+      typescript: '>=5.9 <6'

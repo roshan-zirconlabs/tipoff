@@ -9,6 +9,9 @@
       "!contracts/out",
       "!contracts/cache",
       "!contracts/broadcast",
+      "!contracts/deployments",
+      "!indexer/.envio",
+      "!indexer/envio-env.d.ts",
       "!packages/core/src/abi.ts",
       "!**/next-env.d.ts"
     ]

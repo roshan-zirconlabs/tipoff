@@ -39,11 +39,23 @@ Fixed along the way: payout dust could make a later rank out-earn an earlier one
 backdate `resolve` to dodge scouts (now stamps `block.timestamp`); passkey sponsors couldn't resolve/withdraw without
 gas (added signed `resolveFor` / `withdrawRemainderFor`).
 
-### M2 — Monad testnet
-- [ ] Deploy to testnet (10143) with Circle testnet USDC
-- [ ] Envio HyperIndex v3 indexer, replacing log reads in the web data layer
-- [ ] CRE workflow (TS): `evm-payment` adapter, `cre workflow simulate --broadcast` against the mock forwarder
-- [ ] Request CRE production deploy access (day 1 action for the team)
+### M2 — Monad testnet (in progress, 26 Sep)
+- [x] Deploy to testnet (10143) with Circle testnet USDC — `Tipoff` at `0x196d4119944CD005AD917466B8e2e2Ec018FA547`,
+      source verified on MonadVision (Sourcify exact match), forwarder = CRE simulation forwarder
+- [x] Dedicated relayer wallet (not the contract owner), funded with 1 MON; `pnpm dev:testnet` runs app + keeper
+- [x] Web reads testnet within the public RPC's 100-block `eth_getLogs` cap; `LOGS_RPC_URL` switches to Envio HyperRPC
+- [x] Envio HyperIndex v3 indexer (`indexer/`): config, schema, handlers, test via `createTestIndexer` (no Docker);
+      the web app reads it when `ENVIO_GRAPHQL_URL` is set (mapper tested)
+- [x] CRE workflow (`workflows/resolver`, TS SDK 1.22): USDC-transfer log trigger → spec verified against on-chain
+      `evidenceHash` → `matchPayments` → `writeReport`; 5 tests on the SDK mock runtime
+- [x] `pnpm smoke:testnet`: full relayed lifecycle on testnet + a treasury payment for CRE to report
+- [ ] **You:** 20 testnet USDC to the deployer at faucet.circle.com → `pnpm smoke:testnet`
+- [ ] **You:** CRE account + `cre login` → `cre workflow simulate … --broadcast` on the smoke test's payment
+- [ ] **You:** Envio account → API token (`LOGS_RPC_URL`) and Envio Cloud deploy of `indexer/` (`ENVIO_GRAPHQL_URL`)
+- [ ] Request CRE production deploy access; then `setResolverConfig(productionForwarder, workflowId, owner)`
+
+Testnet caveat: the simulation forwarder doesn't verify DON signatures, so on testnet evidence is only as trustworthy
+as whoever calls it. Mainnet uses the production KeystoneForwarder plus the workflow-owner check in `onReport`.
 
 ### M3 — Hardening
 - [ ] Slither + Krait security pass, fixes + regression tests

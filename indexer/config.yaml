@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: tipoff
+description: Tipoff sealed scout markets on Monad — programs, sealed tips, hits, payouts and public records.
+handlers: src/handlers
+field_selection:
+  transaction_fields:
+    - hash
+contracts:
+  - name: Tipoff
+    abi_file_path: abis/Tipoff.json
+    events:
+      - event: ProgramCreated
+      - event: TipCommitted
+      - event: CandidateActed
+      - event: TipProven
+      - event: HitSettled
+      - event: RemainderWithdrawn
+chains:
+  - id: 10143 # Monad testnet
+    start_block: 65647989
+    contracts:
+      - name: Tipoff
+        address: 0x196d4119944CD005AD917466B8e2e2Ec018FA547

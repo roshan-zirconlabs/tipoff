@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./abi": "./src/abi.ts",
+    "./evidence": "./src/evidence.ts",
+    "./program": "./src/program.ts",
+    "./candidate": "./src/candidate.ts"
   },
   "scripts": {
     "test": "vitest run",
