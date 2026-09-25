@@ -1,0 +1,40 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc = "0.8.37"
+optimizer = true
+optimizer_runs = 10_000
+via_ir = true
+network = "monad"
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=lib/forge-std/src/",
+]
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+
+[fuzz]
+runs = 1024
+
+[invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
+
+[profile.ci.fuzz]
+runs = 10_000
+
+[rpc_endpoints]
+local = "http://127.0.0.1:8545"
+monad_testnet = "https://testnet-rpc.monad.xyz"
+monad = "https://rpc.monad.xyz"
+
+[fmt]
+line_length = 120
+
+[lint]
+# Windows are measured in days; validator timestamp drift (seconds) is irrelevant here.
+exclude_lints = ["block-timestamp"]
+ignore = ["test/**/*.sol", "script/**/*.sol"]

@@ -1,0 +1,18 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+# local deployments
+packages/core/src/deployments/local.json
+.tipoff/
+contracts/deployments/31337.json

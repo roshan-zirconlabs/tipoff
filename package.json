@@ -1,0 +1,29 @@
+{
+  "name": "tipoff",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.ts",
+    "build": "pnpm contracts:build && pnpm abi && pnpm -r build",
+    "abi": "node scripts/export-abi.ts",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test",
+    "test": "pnpm contracts:test && pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@tipoff/core": "workspace:*",
+    "viem": "2.56.9"
+  }
+}
