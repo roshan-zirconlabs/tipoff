@@ -155,11 +155,19 @@ async function remote(network: keyof typeof REMOTE) {
       `RELAYER_PRIVATE_KEY=${relayerKey}`,
       `CRON_SECRET=${bytesToHex(crypto.getRandomValues(new Uint8Array(24)))}`,
       ...(logsRpc ? [`LOGS_RPC_URL=${logsRpc}`] : []),
+      ...(secrets.ENVIO_GRAPHQL_URL ? [`ENVIO_GRAPHQL_URL=${secrets.ENVIO_GRAPHQL_URL}`] : []),
       "",
     ].join("\n"),
   );
   log("deploy", `Monad ${network} · Tipoff ${dep.tipoff} · USDC ${dep.usdc}${logsRpc ? " · logs via HyperRPC" : ""}`);
 
+  if (secrets.ENVIO_GRAPHQL_URL) {
+    // The app reads the Envio index; settling runs through GET /api/keeper. A local log scanner would only trip the
+    // public RPC's rate limit.
+    log("deploy", "reading from Envio; keeper: GET /api/keeper with CRON_SECRET");
+    startWeb();
+    return;
+  }
   const client = createPublicClient({ chain: remoteChain, transport: http(rpcUrl) });
   const logsClient = logsRpc ? createPublicClient({ chain: remoteChain, transport: http(logsRpc) }) : client;
   startWorker({
