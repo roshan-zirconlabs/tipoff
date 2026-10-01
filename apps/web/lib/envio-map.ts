@@ -16,6 +16,10 @@ export type EnvioProgram = {
   claimWindow: string;
   topK: number;
   maxTipsPerScout: number;
+  baseWeight: string;
+  minStake: string;
+  curveDepth: string;
+  staked: string;
   sealKey: string;
   evidenceSpec: string;
   metadata: string;
@@ -31,6 +35,8 @@ export type EnvioTip = {
   programId: string;
   scout: string;
   commitment: string;
+  stake: string;
+  stakeReturned: boolean;
   committedAt: string;
   sponsorEnvelope: string;
   scoutEnvelope: string;
@@ -61,10 +67,10 @@ export type EnvioData = { Program: EnvioProgram[]; Tip: EnvioTip[]; Hit: EnvioHi
 export const ENVIO_QUERY = `query Tipoff($limit: Int!) {
   Program(limit: $limit, order_by: { createdAt: desc }) {
     id sponsor token bounty available rewardPerHit tipDeadline tailEnd claimWindow topK maxTipsPerScout
-    sealKey evidenceSpec metadata createdAt createdTx tipCount openHits withdrawn
+    baseWeight minStake curveDepth staked sealKey evidenceSpec metadata createdAt createdTx tipCount openHits withdrawn
   }
   Tip(limit: $limit, order_by: { committedAt: desc }) {
-    id programId scout commitment committedAt sponsorEnvelope scoutEnvelope proven provenFor txHash
+    id programId scout commitment stake stakeReturned committedAt sponsorEnvelope scoutEnvelope proven provenFor txHash
   }
   Hit(limit: $limit) {
     id programId candidateId source actedAt claimDeadline reward settled evidenceRef actedTx fee returned
@@ -119,6 +125,10 @@ export function snapshotFromEnvio(data: EnvioData, head: { now: number; block: n
     createdAt: Number(p.createdAt),
     topK: p.topK,
     maxTipsPerScout: p.maxTipsPerScout,
+    baseWeight: p.baseWeight,
+    minStake: p.minStake,
+    curveDepth: p.curveDepth,
+    staked: p.staked,
     sealKey: p.sealKey as Hex,
     tipCount: p.tipCount,
     openHits: p.openHits,
@@ -135,6 +145,8 @@ export function snapshotFromEnvio(data: EnvioData, head: { now: number; block: n
     programId: Number(t.programId),
     scout: t.scout as Address,
     commitment: t.commitment as Hex,
+    stake: t.stake,
+    stakeReturned: t.stakeReturned,
     committedAt: Number(t.committedAt),
     sponsorEnvelope: t.sponsorEnvelope as Hex,
     scoutEnvelope: t.scoutEnvelope as Hex,

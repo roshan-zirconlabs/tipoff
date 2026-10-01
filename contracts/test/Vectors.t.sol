@@ -18,8 +18,8 @@ contract VectorsTest is Test {
     bytes32 internal constant CANDIDATE = 0x14ad4897ee970425389d12ff39927db9a16d3b0fc272c700ef0c2c1ec3e4cfec;
     bytes32 internal constant COMMITMENT = 0xb3f75372009b457621617e60f1e0c2d1b23a8739e08f5ee85442f8713812ab8f;
     bytes32 internal constant ENVELOPES = 0xcdbb4b0a5b6e1152ec31ae7f09941bef1ef0618df54863b5eb65e3f6d66f34eb;
-    bytes32 internal constant PARAMS = 0xa18916369e11f63ebb50f9f01fabbf57da6683e665b0e19a23a8b0d14e0571cf;
-    bytes32 internal constant COMMIT_DIGEST = 0x1b255811897a873da6523884705e8b324b442818091bf44d2fbbadbb8e52a13d;
+    bytes32 internal constant PARAMS = 0x15c360cab24f0ddcce1fc0a1c84d856cd67e81e175fdad1dfe64808ade597391;
+    bytes32 internal constant COMMIT_DIGEST = 0x9f334b802b1b3d8b172d9377696ca9b94eb56714906a5e3de3ebc3523cf750f9;
 
     function setUp() public {
         tipoff = new Tipoff(address(this), address(this), 50);
@@ -35,6 +35,9 @@ contract VectorsTest is Test {
             claimWindow: 2_592_000,
             topK: 3,
             maxTipsPerScout: 3,
+            baseWeight: 100_000_000,
+            minStake: 1_000_000,
+            curveDepth: 100_000_000,
             sealKey: bytes32(uint256(0x5EA1)),
             evidenceSpec: bytes('{"kind":"evm-payment"}'),
             metadata: '{"title":"Vectors"}'
@@ -59,7 +62,15 @@ contract VectorsTest is Test {
         bytes32 envelopes = tipoff.envelopesHash(hex"aabb", hex"ccdd");
         bytes32 params = tipoff.hashProgramParams(_params());
         bytes32 structHash = keccak256(
-            abi.encode(tipoff.COMMIT_TIP_TYPEHASH(), PROGRAM_ID, commitment, envelopes, uint256(0), 1_800_000_000)
+            abi.encode(
+                tipoff.COMMIT_TIP_TYPEHASH(),
+                PROGRAM_ID,
+                commitment,
+                uint256(5_000_000),
+                envelopes,
+                uint256(0),
+                1_800_000_000
+            )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(143, VERIFYING), structHash));
 

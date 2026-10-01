@@ -14,10 +14,11 @@ contracts:
       - event: CandidateActed
       - event: TipProven
       - event: HitSettled
+      - event: StakeReturned
       - event: RemainderWithdrawn
 chains:
   - id: 10143 # Monad testnet
-    start_block: 65647989
+    start_block: 67037405
     contracts:
       - name: Tipoff
-        address: 0x196d4119944CD005AD917466B8e2e2Ec018FA547
+        address: 0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707

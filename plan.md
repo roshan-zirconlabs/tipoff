@@ -11,7 +11,7 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | Topic | Decision | Why |
 |---|---|---|
 | Platform fee | **0.5%** of each paid hit, hard cap **1%** in the contract (`MAX_FEE_BPS = 100`) | Scouts keep ~everything; the cap is a promise sponsors can verify. Revenue later comes from sponsor tooling (private dashboards, scout scoring), not a take rate |
-| Scouts paid per hit | Top **3** by commit order: 4/7, 2/7, 1/7 (57 / 29 / 14%) | Rewards being first without making it winner-takes-all |
+| Scouts paid per hit | Top **3** by commit order, split by the sealed bonding curve: free tips get 6/9 · 2/9 · 1/9 (67 / 22 / 11%), and refundable stakes buy more shares | Rewards being first, then conviction, without making it winner-takes-all |
 | First sponsor | **We sponsor the first program ourselves** with real USDC on mainnet | Allowed by both hackathons; honest in the write-up. We also ask 1–2 crypto funds/communities to co-sponsor or quote, which is a bonus, not a blocker |
 | Name | **Tipoff** | Short, and says what you do: you tip off a sponsor early |
 
@@ -40,7 +40,7 @@ backdate `resolve` to dodge scouts (now stamps `block.timestamp`); passkey spons
 gas (added signed `resolveFor` / `withdrawRemainderFor`).
 
 ### M2 — Monad testnet (in progress, 26 Sep)
-- [x] Deploy to testnet (10143) with Circle testnet USDC — `Tipoff` at `0x196d4119944CD005AD917466B8e2e2Ec018FA547`,
+- [x] Deploy to testnet (10143) with Circle testnet USDC — `Tipoff` at `0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707`,
       source verified on MonadVision (Sourcify exact match), forwarder = CRE simulation forwarder
 - [x] Dedicated relayer wallet (not the contract owner), funded with 1 MON; `pnpm dev:testnet` runs app + keeper
 - [x] Web reads testnet within the public RPC's 100-block `eth_getLogs` cap; `LOGS_RPC_URL` switches to Envio HyperRPC
@@ -49,8 +49,9 @@ gas (added signed `resolveFor` / `withdrawRemainderFor`).
 - [x] CRE workflow (`workflows/resolver`, TS SDK 1.22): USDC-transfer log trigger → spec verified against on-chain
       `evidenceHash` → `matchPayments` → `writeReport`; 5 tests on the SDK mock runtime
 - [x] `pnpm smoke:testnet`: full relayed lifecycle on testnet + a treasury payment for CRE to report
-- [ ] **You:** 20 testnet USDC to the deployer at faucet.circle.com → `pnpm smoke:testnet`
-- [ ] **You:** CRE account + `cre login` → `cre workflow simulate … --broadcast` on the smoke test's payment
+- [x] Testnet USDC + `cre login` → smoke test and `cre workflow simulate … --broadcast` passed (hit recorded, source = evidence)
+- [x] **Sealed bonding curve (26 Sep):** refundable stakes, curve-priced shares, `returnStake`, sponsor conviction board with
+      private implied price; redeployed as v2 (v1 at `0x196d…A547` kept in `deployments/10143-v1.json`), smoke + CRE re-run
 - [ ] **You:** Envio account → API token (`LOGS_RPC_URL`) and Envio Cloud deploy of `indexer/` (`ENVIO_GRAPHQL_URL`)
 - [ ] Request CRE production deploy access; then `setResolverConfig(productionForwarder, workflowId, owner)`
 
@@ -58,17 +59,34 @@ Testnet caveat: the simulation forwarder doesn't verify DON signatures, so on te
 as whoever calls it. Mainnet uses the production KeystoneForwarder plus the workflow-owner check in `onReport`.
 
 ### M3 — Hardening
-- [ ] Slither + Krait security pass, fixes + regression tests
-- [ ] Relayer caps (per address / global gas budget), error states, retries
+- [x] Slither + Krait security pass (26 Sep) → `contracts/.audit/report.md`; H-1, M-1, M-2, L-1, L-2 fixed with regression
+      tests; redeployed as v3 `0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707` (v2 record in `deployments/10143-v2.json`);
+      smoke + CRE simulate pass with workflow checks enforced
+- [x] Sponsor record flags evidence hits paid to wallets that never transacted (H-1 residual), matched exactly via the
+      candidate-id hash of each evidence payment's payee
+- [x] Relayer: per-actor and global daily MON budgets (Monad charges the gas limit, so cost is known before sending),
+      balance floor with a clear "send from your own wallet" fallback, serialized sends so nonces never collide
+- [x] Hosted keeper `GET /api/keeper` (Bearer `CRON_SECRET`, `apps/web/vercel.json` cron): settles closed hits and returns
+      unlocked stakes; relayed `withdrawOwedFor` so passkey scouts can pull a held payout without gas (contract change
+      ships with the mainnet deploy; testnet v3 predates it)
 - [ ] Accessibility + performance pass
 
-### M4 — Mainnet + live program
-- [ ] Deploy to Monad mainnet (143), verify contracts
-- [ ] Launch the self-sponsored program, share it, collect real tips
-- [ ] Execute the "backdoor" payout live and record it
+### M4 — Testnet is the live product (mainnet dropped, 30 Sep)
+Both hackathons accept testnet (Monad: "Mainnet or Testnet"; CRE bounty: "build, simulate, or deploy"; Colosseum: no
+chain requirement). `pnpm preflight:mainnet` stays for after the hackathon.
+- [x] Tipoff v4 `0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707` + TestUSDC `0xB98D8cd9D58249E2fC61e157EB5102745EF59F59`
+      (public faucet, 1,000 tUSD/hour, relayed so passkey users need no gas)
+- [x] Reframed for onchain creators: patrons (collectors, DAOs, labels) × fans; "Not a tip jar. Not a creator coin."
+- [x] Social layer: verified "called it" receipts + share cards, calls feed, scouts leaderboard, track records on the
+      patron's conviction board (the noise filter)
+- [x] `pnpm seed:testnet`: two demo patrons, 8 tips, a declared hit and an evidence hit via CRE (settle ~8 Oct)
+- [ ] **You:** host on Vercel (live link, cron keeper); set `NEXT_PUBLIC_SITE_URL`; CRE `evidenceApi` → hosted URL
+- [ ] Settle the seeded hits after 8 Oct (keeper) so receipts show payouts
+- [ ] Farcaster mini app (if Monad works in client wallets — ask in Discord)
 
-### M5 — Submissions
-- [ ] Demo video (≤ 3 min), README, write-ups for Metropolis (Social track + Envio, CRE, Mera bounties) and Colosseum
+### M5 — Submissions (Colosseum 12 Oct, Monad 14 Oct 03:59 UTC) — see docs/SUBMISSION.md
+- [ ] Traction: 3 real patrons, 15–30 testers (20% of the Social score)
+- [ ] Demo video (≤ 3 min), pitch video (≤ 2 min), logo, repo access, Colosseum weekly updates
 
 ## Testing rules
 - Every contract rule in ARCHITECTURE §6.3 has a passing and a reverting test.

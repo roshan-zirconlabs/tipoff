@@ -1,6 +1,10 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
+import type { Address } from "viem";
+import { ActionError, owedTo, withdrawOwed } from "@/lib/client/actions";
 import { useSession } from "@/lib/client/session";
 import { useChainNow, useSnapshot } from "@/lib/client/snapshot";
 import { mineOnly, tipStatus, useOpenedTips } from "@/lib/client/tips";
@@ -10,6 +14,7 @@ import { AddressMark } from "./account";
 import { ArrowRight, Fingerprint } from "./icons";
 import { MyTipRow } from "./my-tips";
 import { useSignIn } from "./sign-in";
+import { useToast } from "./toast";
 import { Button, ButtonLink, Stat } from "./ui";
 
 export function MeScreen({ initial }: { initial: Snapshot }) {
@@ -54,6 +59,8 @@ export function MeScreen({ initial }: { initial: Snapshot }) {
       <h1 className="display mt-8 text-[clamp(2.6rem,6vw,4.4rem)]">
         {claimable.length ? `${claimable.length} tip${claimable.length === 1 ? "" : "s"} to claim.` : "Your tips."}
       </h1>
+
+      <HeldPayout address={address} />
 
       <dl className="mt-10 grid grid-cols-2 gap-x-6 gap-y-8 border-y border-rule py-7 md:grid-cols-4">
         <Stat label="Tips sealed" value={record.tips} />
@@ -107,6 +114,42 @@ export function MeScreen({ initial }: { initial: Snapshot }) {
           </ul>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/** Shown only when a payout couldn't be pushed to this account and the contract is holding it. */
+function HeldPayout({ address }: { address: Address }) {
+  const session = useSession();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const owed = useQuery({ queryKey: ["owed", address], queryFn: () => owedTo(address), refetchInterval: 15_000 });
+  if (!owed.data) return null;
+
+  async function withdraw() {
+    if (!session.keys) return;
+    setBusy(true);
+    try {
+      await withdrawOwed(session.keys);
+      await qc.invalidateQueries({ queryKey: ["owed", address] });
+      toast({ title: "Payout withdrawn", tone: "ok" });
+    } catch (err) {
+      toast({ title: "Couldn't withdraw", body: err instanceof ActionError ? err.message : undefined, tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card mt-8 flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between" role="status">
+      <p className="text-ink-2">
+        <span className="numeric font-semibold text-ink">${usdc(owed.data)}</span> is held for you: the payout couldn't
+        be sent when it settled. It's yours to withdraw any time.
+      </p>
+      <Button variant="signal" loading={busy} onClick={withdraw}>
+        Withdraw ${usdc(owed.data)}
+      </Button>
     </div>
   );
 }

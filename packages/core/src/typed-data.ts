@@ -14,6 +14,7 @@ export const tipoffTypes = {
   CommitTip: [
     { name: "programId", type: "uint256" },
     { name: "commitment", type: "bytes32" },
+    { name: "stake", type: "uint256" },
     { name: "envelopesHash", type: "bytes32" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
@@ -21,6 +22,11 @@ export const tipoffTypes = {
   Resolve: [
     { name: "programId", type: "uint256" },
     { name: "candidateId", type: "bytes32" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+  WithdrawOwed: [
+    { name: "token", type: "address" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
   ],

@@ -141,6 +141,32 @@ export const tipoffAbi = [
   },
   {
     "type": "function",
+    "name": "MIN_TIP_AGE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "RESOLVER_DELAY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "RESOLVE_TYPEHASH",
     "inputs": [],
     "outputs": [
@@ -174,6 +200,19 @@ export const tipoffAbi = [
         "name": "",
         "type": "uint8",
         "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "WITHDRAW_OWED_TYPEHASH",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "stateMutability": "view"
@@ -219,27 +258,46 @@ export const tipoffAbi = [
   },
   {
     "type": "function",
+    "name": "applyResolverConfig",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "commitTip",
     "inputs": [
       {
-        "name": "programId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "commitment",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "sponsorEnvelope",
-        "type": "bytes",
-        "internalType": "bytes"
-      },
-      {
-        "name": "scoutEnvelope",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "tip",
+        "type": "tuple",
+        "internalType": "struct Tipoff.TipInput",
+        "components": [
+          {
+            "name": "programId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "commitment",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "stake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "sponsorEnvelope",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "scoutEnvelope",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
       }
     ],
     "outputs": [
@@ -261,24 +319,36 @@ export const tipoffAbi = [
         "internalType": "address"
       },
       {
-        "name": "programId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "commitment",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "sponsorEnvelope",
-        "type": "bytes",
-        "internalType": "bytes"
-      },
-      {
-        "name": "scoutEnvelope",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "tip",
+        "type": "tuple",
+        "internalType": "struct Tipoff.TipInput",
+        "components": [
+          {
+            "name": "programId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "commitment",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "stake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "sponsorEnvelope",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "scoutEnvelope",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
       },
       {
         "name": "deadline",
@@ -289,6 +359,33 @@ export const tipoffAbi = [
         "name": "sig",
         "type": "bytes",
         "internalType": "bytes"
+      },
+      {
+        "name": "permit",
+        "type": "tuple",
+        "internalType": "struct Tipoff.PermitSig",
+        "components": [
+          {
+            "name": "deadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "v",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "r",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "s",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ]
       }
     ],
     "outputs": [
@@ -384,6 +481,21 @@ export const tipoffAbi = [
             "internalType": "uint16"
           },
           {
+            "name": "baseWeight",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "minStake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "curveDepth",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
             "name": "sealKey",
             "type": "bytes32",
             "internalType": "bytes32"
@@ -460,6 +572,21 @@ export const tipoffAbi = [
             "internalType": "uint16"
           },
           {
+            "name": "baseWeight",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "minStake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "curveDepth",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
             "name": "sealKey",
             "type": "bytes32",
             "internalType": "bytes32"
@@ -527,6 +654,30 @@ export const tipoffAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "curveShares",
+    "inputs": [
+      {
+        "name": "depth",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "weights",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "shares",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -819,6 +970,26 @@ export const tipoffAbi = [
             "name": "openHits",
             "type": "uint32",
             "internalType": "uint32"
+          },
+          {
+            "name": "baseWeight",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "minStake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "curveDepth",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "staked",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       }
@@ -860,6 +1031,16 @@ export const tipoffAbi = [
             "name": "commitment",
             "type": "bytes32",
             "internalType": "bytes32"
+          },
+          {
+            "name": "stake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "stakeReturned",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       }
@@ -914,6 +1095,21 @@ export const tipoffAbi = [
             "name": "maxTipsPerScout",
             "type": "uint16",
             "internalType": "uint16"
+          },
+          {
+            "name": "baseWeight",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "minStake",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "curveDepth",
+            "type": "uint128",
+            "internalType": "uint128"
           },
           {
             "name": "sealKey",
@@ -981,6 +1177,30 @@ export const tipoffAbi = [
   },
   {
     "type": "function",
+    "name": "owed",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -994,30 +1214,6 @@ export const tipoffAbi = [
   },
   {
     "type": "function",
-    "name": "payoutSplit",
-    "inputs": [
-      {
-        "name": "net",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "n",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "amounts",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "stateMutability": "pure"
-  },
-  {
-    "type": "function",
     "name": "pendingOwner",
     "inputs": [],
     "outputs": [
@@ -1025,6 +1221,34 @@ export const tipoffAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingResolver",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "forwarder",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "workflowId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "workflowOwner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
@@ -1113,6 +1337,46 @@ export const tipoffAbi = [
         "name": "sig",
         "type": "bytes",
         "internalType": "bytes"
+      },
+      {
+        "name": "permit",
+        "type": "tuple",
+        "internalType": "struct Tipoff.PermitSig",
+        "components": [
+          {
+            "name": "deadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "v",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "r",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "s",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "returnStake",
+    "inputs": [
+      {
+        "name": "tipId",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -1176,6 +1440,30 @@ export const tipoffAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "splitByShares",
+    "inputs": [
+      {
+        "name": "net",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "shares",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amounts",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -1254,12 +1542,72 @@ export const tipoffAbi = [
   },
   {
     "type": "function",
+    "name": "totalOwed",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "transferOwnership",
     "inputs": [
       {
         "name": "newOwner",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawOwed",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawOwedFor",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "sig",
+        "type": "bytes",
+        "internalType": "bytes"
       }
     ],
     "outputs": [],
@@ -1407,6 +1755,31 @@ export const tipoffAbi = [
   },
   {
     "type": "event",
+    "name": "OwedWithdrawn",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferStarted",
     "inputs": [
       {
@@ -1439,6 +1812,31 @@ export const tipoffAbi = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PaymentDeferred",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1508,6 +1906,24 @@ export const tipoffAbi = [
         "internalType": "uint16"
       },
       {
+        "name": "baseWeight",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "minStake",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "curveDepth",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
         "name": "sealKey",
         "type": "bytes32",
         "indexed": false,
@@ -1560,7 +1976,7 @@ export const tipoffAbi = [
       {
         "name": "forwarder",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
       },
       {
@@ -1572,8 +1988,70 @@ export const tipoffAbi = [
       {
         "name": "workflowOwner",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ResolverProposed",
+    "inputs": [
+      {
+        "name": "forwarder",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "workflowId",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "workflowOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "StakeReturned",
+    "inputs": [
+      {
+        "name": "programId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tipId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "scout",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
       }
     ],
     "anonymous": false
@@ -1605,6 +2083,12 @@ export const tipoffAbi = [
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      },
+      {
+        "name": "stake",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
       },
       {
         "name": "sponsorEnvelope",
@@ -1774,6 +2258,16 @@ export const tipoffAbi = [
   },
   {
     "type": "error",
+    "name": "NothingPending",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingToReturn",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "OwnableInvalidOwner",
     "inputs": [
       {
@@ -1827,6 +2321,16 @@ export const tipoffAbi = [
   },
   {
     "type": "error",
+    "name": "StakeLocked",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "StakeTooLow",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "StringTooLong",
     "inputs": [
       {
@@ -1864,6 +2368,11 @@ export const tipoffAbi = [
   {
     "type": "error",
     "name": "TokenNotAllowed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooEarly",
     "inputs": []
   },
   {
@@ -1966,6 +2475,25 @@ export const mockUsdcAbi = [
   },
   {
     "type": "function",
+    "name": "blocked",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "decimals",
     "inputs": [],
     "outputs": [
@@ -2037,6 +2565,619 @@ export const mockUsdcAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "name",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nonces",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "permit",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "spender",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "v",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "r",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "s",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setBlocked",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "isBlocked",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "symbol",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalSupply",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "transfer",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferFrom",
+    "inputs": [
+      {
+        "name": "from",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "Approval",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "spender",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "EIP712DomainChanged",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Transfer",
+    "inputs": [
+      {
+        "name": "from",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "Blocked",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignature",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignatureLength",
+    "inputs": [
+      {
+        "name": "length",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignatureS",
+    "inputs": [
+      {
+        "name": "s",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC20InsufficientAllowance",
+    "inputs": [
+      {
+        "name": "spender",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "allowance",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "needed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC20InsufficientBalance",
+    "inputs": [
+      {
+        "name": "sender",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "balance",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "needed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC20InvalidApprover",
+    "inputs": [
+      {
+        "name": "approver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC20InvalidReceiver",
+    "inputs": [
+      {
+        "name": "receiver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC20InvalidSender",
+    "inputs": [
+      {
+        "name": "sender",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC20InvalidSpender",
+    "inputs": [
+      {
+        "name": "spender",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC2612ExpiredSignature",
+    "inputs": [
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC2612InvalidSigner",
+    "inputs": [
+      {
+        "name": "signer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidAccountNonce",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "currentNonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidShortString",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "StringTooLong",
+    "inputs": [
+      {
+        "name": "str",
+        "type": "string",
+        "internalType": "string"
+      }
+    ]
+  }
+] as const;
+
+export const testUsdcAbi = [
+  {
+    "type": "constructor",
+    "inputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "DOMAIN_SEPARATOR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "FAUCET_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "FAUCET_COOLDOWN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "allowance",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "spender",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "approve",
+    "inputs": [
+      {
+        "name": "spender",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "balanceOf",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "decimals",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "drip",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "eip712Domain",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "fields",
+        "type": "bytes1",
+        "internalType": "bytes1"
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "chainId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "verifyingContract",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "extensions",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "lastDrip",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2385,6 +3526,17 @@ export const mockUsdcAbi = [
         "name": "owner",
         "type": "address",
         "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "FaucetCooldown",
+    "inputs": [
+      {
+        "name": "availableAt",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ]
   },

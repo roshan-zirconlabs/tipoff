@@ -95,11 +95,11 @@ function Toolbar() {
                 type="button"
                 onClick={() => {
                   session.enterDevMode("Northlight (demo sponsor)", config.demoSponsorSeed ?? undefined);
-                  toast({ title: "Signed in as the demo sponsor", tone: "ok" });
+                  toast({ title: "Signed in as the demo patron", tone: "ok" });
                 }}
                 className="mb-3 w-full rounded-lg border border-[color-mix(in_oklab,var(--paper)_30%,transparent)] px-2 py-2 transition hover:bg-[color-mix(in_oklab,var(--paper)_10%,transparent)]"
               >
-                Sign in as the demo sponsor
+                Sign in as the demo patron
               </button>
             ) : null}
 
@@ -142,7 +142,7 @@ function Toolbar() {
               <input
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                placeholder="0x founder"
+                placeholder="0x creator wallet"
                 aria-label="Recipient"
                 className="min-w-0 flex-1 rounded-lg bg-[color-mix(in_oklab,var(--paper)_12%,transparent)] px-2 py-2 outline-none placeholder:text-[color-mix(in_oklab,var(--paper)_45%,transparent)]"
               />

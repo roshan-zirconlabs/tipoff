@@ -11,6 +11,7 @@ describe("relayRequest", () => {
     scout,
     programId: "1",
     commitment: b32,
+    stake: "0",
     sponsorEnvelope: "0x0102",
     scoutEnvelope: "0x",
     deadline: "1800000000",
@@ -27,6 +28,17 @@ describe("relayRequest", () => {
     expect(relayRequest.safeParse({ ...commit, scout: "0xnope" }).success).toBe(false);
     expect(relayRequest.safeParse({ ...commit, programId: "-1" }).success).toBe(false);
     expect(relayRequest.safeParse({ ...commit, commitment: "0x12" }).success).toBe(false);
+  });
+
+  it("accepts a staked tip with a permit and bounds the stake to uint128", () => {
+    const permit = { deadline: "1", v: 27, r: b32, s: b32 };
+    expect(relayRequest.safeParse({ ...commit, stake: "5000000", permit }).success).toBe(true);
+    expect(relayRequest.safeParse({ ...commit, stake: `${2n ** 128n}` }).success).toBe(false);
+    expect(relayRequest.safeParse({ ...commit, stake: "-5" }).success).toBe(false);
+    expect(relayRequest.safeParse({ type: "returnStake", tipId: "4" }).success).toBe(true);
+    const owed = { type: "withdrawOwed", token: scout, account: scout, deadline: "1", signature: sig };
+    expect(relayRequest.safeParse(owed).success).toBe(true);
+    expect(relayRequest.safeParse({ ...owed, account: "0xnope" }).success).toBe(false);
   });
 
   it("caps envelope size at the contract's 1024-byte limit", () => {
@@ -46,6 +58,9 @@ describe("relayRequest", () => {
         claimWindow: 604800,
         topK: 6,
         maxTipsPerScout: 3,
+        baseWeight: "100000000",
+        minStake: "0",
+        curveDepth: "100000000",
         sealKey: b32,
         evidenceSpec: "0x",
         metadata: "{}",

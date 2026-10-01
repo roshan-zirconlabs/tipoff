@@ -34,6 +34,8 @@ contract Handler is Test {
 
     uint256 public ghostDeposited;
     uint256 public ghostWithdrawn;
+    uint256 public ghostScoutMinted;
+    uint256 public constant SCOUT_FUNDS = 1e15;
 
     constructor(Tipoff tipoff_, MockUSDC usdc_, address forwarder_, bytes memory metadata_) {
         tipoff = tipoff_;
@@ -42,6 +44,10 @@ contract Handler is Test {
         metadata = metadata_;
         for (uint256 i = 0; i < 4; ++i) {
             scouts[i] = makeAddr(string(abi.encode("inv-scout", i)));
+            usdc.mint(scouts[i], SCOUT_FUNDS);
+            ghostScoutMinted += SCOUT_FUNDS;
+            vm.prank(scouts[i]);
+            usdc.approve(address(tipoff), type(uint256).max);
         }
         for (uint256 i = 0; i < 3; ++i) {
             candidates[i] = keccak256(abi.encode("candidate", i));
@@ -63,6 +69,9 @@ contract Handler is Test {
             claimWindow: 7 days,
             topK: uint8(bound(rawK, 1, 5)),
             maxTipsPerScout: 5,
+            baseWeight: 1e6,
+            minStake: 0,
+            curveDepth: 50e6,
             sealKey: bytes32(uint256(1)),
             evidenceSpec: "",
             metadata: ""
@@ -72,14 +81,22 @@ contract Handler is Test {
         ghostDeposited += bounty;
     }
 
-    function commit(uint256 pSeed, uint256 sSeed, uint256 cSeed) external {
+    function commit(uint256 pSeed, uint256 sSeed, uint256 cSeed, uint64 rawStake) external {
         if (programIds.length == 0) return;
         uint256 id = programIds[pSeed % programIds.length];
         address scout = scouts[sSeed % 4];
         bytes32 candidate = candidates[cSeed % 3];
         bytes32 salt = keccak256(abi.encode(pSeed, sSeed, cSeed, tips.length));
         vm.prank(scout);
-        try tipoff.commitTip(id, tipoff.commitmentOf(id, scout, candidate, salt), hex"01", "") returns (uint256 t) {
+        uint128 stake = uint128(bound(rawStake, 0, 1e11));
+        Tipoff.TipInput memory input = Tipoff.TipInput({
+            programId: id,
+            commitment: tipoff.commitmentOf(id, scout, candidate, salt),
+            stake: stake,
+            sponsorEnvelope: hex"01",
+            scoutEnvelope: ""
+        });
+        try tipoff.commitTip(input) returns (uint256 t) {
             tips.push(TipRecord(t, id, scout, candidate, salt));
         } catch {}
     }
@@ -112,6 +129,21 @@ contract Handler is Test {
         try tipoff.proveTip(t.tipId, t.candidateId, t.salt) {} catch {}
     }
 
+    /// Toggle USDC's blocklist on a scout, so payouts sometimes fail and must be deferred.
+    function block_(uint256 sSeed, bool isBlocked) external {
+        usdc.setBlocked(scouts[sSeed % 4], isBlocked);
+    }
+
+    function withdrawOwed(uint256 sSeed) external {
+        vm.prank(scouts[sSeed % 4]);
+        try tipoff.withdrawOwed(address(usdc)) {} catch {}
+    }
+
+    function returnStake(uint256 tSeed) external {
+        if (tips.length == 0) return;
+        try tipoff.returnStake(tips[tSeed % tips.length].tipId) {} catch {}
+    }
+
     function settle(uint256 hSeed) external {
         if (hits.length == 0) return;
         HitRecord memory h = hits[hSeed % hits.length];
@@ -136,19 +168,29 @@ contract Handler is Test {
 
     function lockedByAccounting() external view returns (uint256 total) {
         for (uint256 i = 0; i < programIds.length; ++i) {
-            total += tipoff.getProgram(programIds[i]).available;
+            Tipoff.Program memory p = tipoff.getProgram(programIds[i]);
+            total += uint256(p.available) + p.staked;
         }
+        total += tipoff.totalOwed(address(usdc));
         for (uint256 i = 0; i < hits.length; ++i) {
             Tipoff.Hit memory h = tipoff.getHit(hits[i].programId, hits[i].candidateId);
             if (!h.settled) total += h.reward;
         }
     }
 
-    function paidToScoutsAndFees(address feeRecipient) external view returns (uint256 total) {
+    function heldByScoutsAndFees(address feeRecipient) external view returns (uint256 total) {
         for (uint256 i = 0; i < 4; ++i) {
             total += usdc.balanceOf(scouts[i]);
         }
         total += usdc.balanceOf(feeRecipient);
+    }
+
+    function programCount() external view returns (uint256) {
+        return programIds.length;
+    }
+
+    function sponsorBalance() external view returns (uint256) {
+        return usdc.balanceOf(sponsor);
     }
 
     function hitCount() external view returns (uint256) {
@@ -172,21 +214,36 @@ contract TipoffInvariantTest is Test {
         address forwarder = makeAddr("inv-forwarder");
         tipoff = new Tipoff(address(this), feeRecipient, 50);
         tipoff.setAllowedToken(address(usdc), true);
-        tipoff.setResolverConfig(forwarder, bytes32(0), address(0));
-        handler = new Handler(tipoff, usdc, forwarder, abi.encodePacked(bytes32(0), bytes10(0), address(0)));
+        tipoff.setResolverConfig(forwarder, keccak256("inv-workflow"), address(this));
+        handler = new Handler(
+            tipoff, usdc, forwarder, abi.encodePacked(keccak256("inv-workflow"), bytes10(0), address(this), bytes2(0))
+        );
         targetContract(address(handler));
     }
 
-    /// Every token the contract holds is owed to someone: unallocated bounty or an unsettled hit.
+    /// Every token the contract holds is owed to someone: unallocated bond, an unsettled hit, a scout's stake, or a
+    /// deferred payout.
     function invariant_solvency() public view {
         assertEq(usdc.balanceOf(address(tipoff)), handler.lockedByAccounting());
     }
 
-    /// Nothing is created or lost: deposits = still held + paid out + returned to sponsors.
+    /// Nothing is created or lost: every token minted is held by the contract, a scout, the fee recipient or the sponsor.
     function invariant_conservation() public view {
         assertEq(
-            handler.ghostDeposited(),
-            usdc.balanceOf(address(tipoff)) + handler.paidToScoutsAndFees(feeRecipient) + handler.ghostWithdrawn()
+            usdc.totalSupply(),
+            usdc.balanceOf(address(tipoff)) + handler.heldByScoutsAndFees(feeRecipient) + handler.sponsorBalance()
+        );
+    }
+
+    /// A stake is never lost: every scout ends with at least their funds minus stakes still held.
+    function invariant_stakesAreNeverLost() public view {
+        uint256 held = 0;
+        for (uint256 i = 0; i < handler.programCount(); ++i) {
+            held += tipoff.getProgram(handler.programIds(i)).staked;
+        }
+        assertGe(
+            handler.heldByScoutsAndFees(feeRecipient) + held + tipoff.totalOwed(address(usdc)),
+            handler.ghostScoutMinted()
         );
     }
 

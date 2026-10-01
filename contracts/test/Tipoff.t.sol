@@ -68,7 +68,7 @@ contract TipoffTest is TipoffBase {
     }
 
     function test_createProgram_rejectsInvalidParams() public {
-        Tipoff.ProgramParams[] memory bad = new Tipoff.ProgramParams[](11);
+        Tipoff.ProgramParams[] memory bad = new Tipoff.ProgramParams[](13);
         for (uint256 i = 0; i < bad.length; ++i) {
             bad[i] = _params();
         }
@@ -83,6 +83,8 @@ contract TipoffTest is TipoffBase {
         bad[8].tailEnd = bad[8].tipDeadline + 90 days - 1;
         bad[9].claimWindow = 7 days - 1;
         bad[10].evidenceSpec = new bytes(2049);
+        bad[11].baseWeight = 0;
+        bad[12].curveDepth = 0;
         for (uint256 i = 0; i < bad.length; ++i) {
             vm.prank(sponsor);
             vm.expectRevert(Tipoff.InvalidParams.selector);
@@ -151,9 +153,9 @@ contract TipoffTest is TipoffBase {
         uint256 id = _create();
         bytes32 c = keccak256("c");
         vm.expectEmit(true, true, true, true);
-        emit Tipoff.TipCommitted(id, 1, scouts[0], c, hex"aa", hex"bb");
+        emit Tipoff.TipCommitted(id, 1, scouts[0], c, 0, hex"aa", hex"bb");
         vm.prank(scouts[0]);
-        tipoff.commitTip(id, c, hex"aa", hex"bb");
+        tipoff.commitTip(_in(id, c, 0, hex"aa", hex"bb"));
     }
 
     function test_commit_rejectsAfterDeadline() public {
@@ -161,38 +163,38 @@ contract TipoffTest is TipoffBase {
         vm.warp(_params().tipDeadline + 1);
         vm.prank(scouts[0]);
         vm.expectRevert(Tipoff.TippingClosed.selector);
-        tipoff.commitTip(id, keccak256("c"), hex"01", "");
+        tipoff.commitTip(_in(id, keccak256("c"), 0, hex"01", ""));
     }
 
     function test_commit_rejectsSponsor() public {
         uint256 id = _create();
         vm.prank(sponsor);
         vm.expectRevert(Tipoff.SponsorCannotTip.selector);
-        tipoff.commitTip(id, keccak256("c"), hex"01", "");
+        tipoff.commitTip(_in(id, keccak256("c"), 0, hex"01", ""));
     }
 
     function test_commit_enforcesTipLimit() public {
         uint256 id = _create();
         for (uint256 i = 0; i < 3; ++i) {
             vm.prank(scouts[0]);
-            tipoff.commitTip(id, keccak256(abi.encode(i)), hex"01", "");
+            tipoff.commitTip(_in(id, keccak256(abi.encode(i)), 0, hex"01", ""));
         }
         vm.prank(scouts[0]);
         vm.expectRevert(Tipoff.TipLimitReached.selector);
-        tipoff.commitTip(id, keccak256("4"), hex"01", "");
+        tipoff.commitTip(_in(id, keccak256("4"), 0, hex"01", ""));
     }
 
     function test_commit_rejectsBadInput() public {
         uint256 id = _create();
         vm.startPrank(scouts[0]);
         vm.expectRevert(Tipoff.InvalidParams.selector);
-        tipoff.commitTip(id, bytes32(0), hex"01", "");
+        tipoff.commitTip(_in(id, bytes32(0), 0, hex"01", ""));
         vm.expectRevert(Tipoff.InvalidParams.selector);
-        tipoff.commitTip(id, keccak256("c"), "", "");
+        tipoff.commitTip(_in(id, keccak256("c"), 0, "", ""));
         vm.expectRevert(Tipoff.InvalidParams.selector);
-        tipoff.commitTip(id, keccak256("c"), new bytes(1025), "");
+        tipoff.commitTip(_in(id, keccak256("c"), 0, new bytes(1025), ""));
         vm.expectRevert(Tipoff.ProgramNotFound.selector);
-        tipoff.commitTip(99, keccak256("c"), hex"01", "");
+        tipoff.commitTip(_in(99, keccak256("c"), 0, hex"01", ""));
         vm.stopPrank();
     }
 
@@ -200,37 +202,148 @@ contract TipoffTest is TipoffBase {
         uint256 id = _create();
         bytes32 c = keccak256("c");
         uint256 deadline = block.timestamp + 1 hours;
-        bytes memory sig = _commitSig(scoutPks[0], id, c, hex"aa", hex"bb", 0, deadline);
+        bytes memory sig = _commitSig(scoutPks[0], id, c, 0, hex"aa", hex"bb", 0, deadline);
 
         vm.prank(relayer);
-        uint256 tipId = tipoff.commitTipFor(scouts[0], id, c, hex"aa", hex"bb", deadline, sig);
+        uint256 tipId = tipoff.commitTipFor(scouts[0], _in(id, c, 0, hex"aa", hex"bb"), deadline, sig, _noPermit());
         assertEq(tipoff.getTip(tipId).scout, scouts[0]);
 
         vm.prank(relayer);
         vm.expectRevert(Tipoff.InvalidSignature.selector); // replay
-        tipoff.commitTipFor(scouts[0], id, c, hex"aa", hex"bb", deadline, sig);
+        tipoff.commitTipFor(scouts[0], _in(id, c, 0, hex"aa", hex"bb"), deadline, sig, _noPermit());
     }
 
     function test_commitTipFor_rejectsSwappedEnvelope() public {
         uint256 id = _create();
         bytes32 c = keccak256("c");
         uint256 deadline = block.timestamp + 1 hours;
-        bytes memory sig = _commitSig(scoutPks[0], id, c, hex"aa", hex"bb", 0, deadline);
+        bytes memory sig = _commitSig(scoutPks[0], id, c, 0, hex"aa", hex"bb", 0, deadline);
         vm.prank(relayer);
         vm.expectRevert(Tipoff.InvalidSignature.selector);
-        tipoff.commitTipFor(scouts[0], id, c, hex"cc", hex"bb", deadline, sig);
+        tipoff.commitTipFor(scouts[0], _in(id, c, 0, hex"cc", hex"bb"), deadline, sig, _noPermit());
     }
 
     function test_commitTipFor_rejectsWrongSignerAndExpiry() public {
         uint256 id = _create();
         bytes32 c = keccak256("c");
         uint256 deadline = block.timestamp + 1 hours;
-        bytes memory sig = _commitSig(scoutPks[1], id, c, hex"aa", "", 0, deadline);
+        bytes memory sig = _commitSig(scoutPks[1], id, c, 0, hex"aa", "", 0, deadline);
         vm.expectRevert(Tipoff.InvalidSignature.selector);
-        tipoff.commitTipFor(scouts[0], id, c, hex"aa", "", deadline, sig);
+        tipoff.commitTipFor(scouts[0], _in(id, c, 0, hex"aa", ""), deadline, sig, _noPermit());
 
         vm.expectRevert(Tipoff.Expired.selector);
-        tipoff.commitTipFor(scouts[0], id, c, hex"aa", "", block.timestamp - 1, sig);
+        tipoff.commitTipFor(scouts[0], _in(id, c, 0, hex"aa", ""), block.timestamp - 1, sig, _noPermit());
+    }
+
+    // ─── Stakes ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    function test_stake_isHeldAndEmitted() public {
+        uint256 id = _create();
+        uint256 t = _commitStaked(0, id, X, 25e6);
+        assertEq(tipoff.getTip(t).stake, 25e6);
+        assertEq(tipoff.getProgram(id).staked, 25e6);
+        assertEq(usdc.balanceOf(address(tipoff)), BOUNTY + 25e6);
+    }
+
+    function test_stake_enforcesMinimum() public {
+        Tipoff.ProgramParams memory p = _params();
+        p.minStake = 5e6;
+        vm.prank(sponsor);
+        uint256 id = tipoff.createProgram(p);
+        vm.prank(scouts[0]);
+        vm.expectRevert(Tipoff.StakeTooLow.selector);
+        tipoff.commitTip(_in(id, keccak256("c"), 5e6 - 1, hex"01", ""));
+        _commitStaked(0, id, X, 5e6);
+    }
+
+    function test_returnStake_lockedWhileTippingThenAlwaysRefunded() public {
+        uint256 id = _create();
+        uint256 t = _commitStaked(0, id, X, 25e6);
+        uint256 free = _commit(1, id, X);
+        vm.expectRevert(Tipoff.StakeLocked.selector);
+        tipoff.returnStake(t);
+
+        vm.warp(_params().tipDeadline + 1);
+        vm.prank(relayer); // permissionless, but always pays the scout
+        tipoff.returnStake(t);
+        assertEq(usdc.balanceOf(scouts[0]), 25e6);
+        assertEq(tipoff.getProgram(id).staked, 0);
+        assertTrue(tipoff.getTip(t).stakeReturned);
+
+        vm.expectRevert(Tipoff.NothingToReturn.selector);
+        tipoff.returnStake(t);
+        vm.expectRevert(Tipoff.NothingToReturn.selector);
+        tipoff.returnStake(free);
+        vm.expectRevert(Tipoff.TipNotFound.selector);
+        tipoff.returnStake(99);
+    }
+
+    /// Conviction raises a tip's share, but an earlier free tip still leads: the curve rewards timing first.
+    function test_settle_stakeBuysSharesButTimingLeads() public {
+        uint256 id = _create();
+        uint256 early = _commit(0, id, X); // w = 100: 50 shares
+        uint256 late = _commitStaked(1, id, X, 900e6); // w = 1000 after S = 100: 41.67 shares (16.67 unstaked)
+        vm.warp(block.timestamp + 1 minutes);
+        vm.prank(sponsor);
+        tipoff.resolve(id, X);
+        _prove(0, early, X);
+        _prove(1, late, X);
+        vm.warp(tipoff.getHit(id, X).claimDeadline + 1);
+        tipoff.settle(id, X);
+
+        uint256 net = REWARD - (uint256(REWARD) * FEE_BPS) / 10_000;
+        uint256 lateShares = 41_666_666;
+        assertEq(usdc.balanceOf(scouts[1]), (net * lateShares) / (50e6 + lateShares));
+        assertGt(usdc.balanceOf(scouts[0]), usdc.balanceOf(scouts[1]));
+        assertGt(usdc.balanceOf(scouts[1]), (net * 16_666_666) / (50e6 + 16_666_666), "stake beat free");
+    }
+
+    /// Settlement uses the stake recorded at commit, so pulling a stake before settling changes nothing.
+    function test_settle_ignoresReturnedStakes() public {
+        uint256 id = _create();
+        uint256 a = _commit(0, id, X);
+        uint256 b = _commitStaked(1, id, X, 900e6);
+        vm.warp(block.timestamp + 1 minutes);
+        vm.prank(sponsor);
+        tipoff.resolve(id, X);
+        _prove(0, a, X);
+        _prove(1, b, X);
+        vm.warp(_params().tipDeadline + 1);
+        tipoff.returnStake(b);
+        uint256 refunded = usdc.balanceOf(scouts[1]);
+        assertEq(refunded, 900e6);
+        vm.warp(tipoff.getHit(id, X).claimDeadline + 1);
+        tipoff.settle(id, X);
+        uint256 net = REWARD - (uint256(REWARD) * FEE_BPS) / 10_000;
+        assertEq(usdc.balanceOf(scouts[1]) - refunded, (net * 41_666_666) / (50e6 + 41_666_666));
+    }
+
+    function test_commitTipFor_withStakeAndPermit() public {
+        uint256 id = _create();
+        bytes32 c = keccak256("c");
+        uint128 stake = 10e6;
+        usdc.mint(scouts[0], stake);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _commitSig(scoutPks[0], id, c, stake, hex"aa", "", 0, deadline);
+        Tipoff.PermitSig memory permit = _permit(scoutPks[0], address(tipoff), stake, deadline);
+
+        vm.prank(relayer);
+        uint256 t = tipoff.commitTipFor(scouts[0], _in(id, c, stake, hex"aa", ""), deadline, sig, permit);
+        assertEq(tipoff.getTip(t).stake, stake);
+        assertEq(usdc.balanceOf(scouts[0]), 0);
+    }
+
+    function test_commitTipFor_rejectsInflatedStake() public {
+        uint256 id = _create();
+        bytes32 c = keccak256("c");
+        usdc.mint(scouts[0], 100e6);
+        vm.prank(scouts[0]);
+        usdc.approve(address(tipoff), 100e6);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _commitSig(scoutPks[0], id, c, 1e6, hex"aa", "", 0, deadline);
+        vm.prank(relayer);
+        vm.expectRevert(Tipoff.InvalidSignature.selector);
+        tipoff.commitTipFor(scouts[0], _in(id, c, 100e6, hex"aa", ""), deadline, sig, _noPermit());
     }
 
     // ─── Resolve (sponsor) ─────────────────────────────────────────────────────────────────────────────────────────
@@ -245,7 +358,7 @@ contract TipoffTest is TipoffBase {
         assertEq(h.claimDeadline, tipoff.getProgram(id).tipDeadline + 30 days); // claims open once tipping closes
         assertEq(h.source, tipoff.SOURCE_SPONSOR());
         assertEq(h.reward, REWARD);
-        assertEq(tipoff.getProgram(id).available, BOUNTY - REWARD);
+        assertEq(tipoff.getProgram(id).available, BOUNTY, "declared hits are funded by the sponsor, not the bond");
         assertEq(tipoff.getProgram(id).openHits, 1);
     }
 
@@ -269,19 +382,175 @@ contract TipoffTest is TipoffBase {
         vm.stopPrank();
     }
 
-    function test_resolve_bountyExhaustion_recordsWithoutPaying() public {
-        uint256 id = _create(); // 3 hits worth
-        vm.startPrank(sponsor);
-        tipoff.resolve(id, keccak256("a"));
-        tipoff.resolve(id, keccak256("b"));
-        tipoff.resolve(id, keccak256("c"));
-        tipoff.resolve(id, keccak256("d"));
-        vm.stopPrank();
+    function test_evidence_bountyExhaustion_recordsWithoutPaying() public {
+        uint256 id = _create(); // bond covers 3 evidence hits
+        _report(id, keccak256("a"), uint64(block.timestamp));
+        _report(id, keccak256("b"), uint64(block.timestamp));
+        _report(id, keccak256("c"), uint64(block.timestamp));
+        _report(id, keccak256("d"), uint64(block.timestamp));
         Tipoff.Hit memory h = tipoff.getHit(id, keccak256("d"));
         assertEq(h.reward, 0);
         assertTrue(h.settled);
         assertEq(tipoff.getProgram(id).openHits, 3);
         assertEq(tipoff.getProgram(id).available, 0);
+    }
+
+    /// Audit H-1 regression: declared hits are paid from the sponsor's wallet, never from the bond, so sham hits on a
+    /// sponsor's own sybil's candidates can't starve the real hire's evidence hit.
+    function test_shamDeclaredHitsCannotDrainTheBond() public {
+        uint256 id = _create();
+        bytes32 realHire = _candidate(makeAddr("realHire"));
+        uint256 honest = _commit(0, id, realHire);
+        uint256 now_ = block.timestamp; // forge caches block.timestamp within a test; track time explicitly
+        for (uint256 i = 0; i < 3; ++i) {
+            bytes32 junk = _candidate(address(uint160(0x5A30 + i)));
+            uint256 t = _commit(5, id, junk);
+            now_ += 1 minutes;
+            vm.warp(now_);
+            vm.prank(sponsor);
+            tipoff.resolve(id, junk);
+            _prove(5, t, junk);
+        }
+        assertEq(tipoff.getProgram(id).available, BOUNTY, "declared hits never touch the bond");
+
+        _report(id, realHire, uint64(now_));
+        assertEq(tipoff.getHit(id, realHire).reward, REWARD);
+        _prove(0, honest, realHire);
+        vm.warp(tipoff.getHit(id, realHire).claimDeadline + 1);
+        tipoff.settle(id, realHire);
+        assertEq(usdc.balanceOf(scouts[0]), REWARD - (uint256(REWARD) * FEE_BPS) / 10_000);
+    }
+
+    function test_resolve_pullsRewardFromSponsor_andRefundsIfUnclaimed() public {
+        uint256 id = _create();
+        uint256 before = usdc.balanceOf(sponsor);
+        vm.prank(sponsor);
+        tipoff.resolve(id, X);
+        assertEq(usdc.balanceOf(sponsor), before - REWARD);
+        vm.warp(tipoff.getHit(id, X).claimDeadline + 1);
+        tipoff.settle(id, X);
+        assertEq(usdc.balanceOf(sponsor), before, "unclaimed declared hit refunded to the sponsor");
+        assertEq(tipoff.getProgram(id).available, BOUNTY);
+    }
+
+    function test_resolveFor_withPermit() public {
+        uint256 pk = 0x5905;
+        address s = vm.addr(pk);
+        usdc.mint(s, BOUNTY + REWARD);
+        Tipoff.ProgramParams memory p = _params();
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _sign(
+            pk, keccak256(abi.encode(tipoff.CREATE_PROGRAM_TYPEHASH(), tipoff.hashProgramParams(p), 0, deadline))
+        );
+        uint256 id = tipoff.createProgramFor(p, s, deadline, sig, _permit(pk, address(tipoff), BOUNTY, deadline));
+        bytes memory rsig = _sign(pk, keccak256(abi.encode(tipoff.RESOLVE_TYPEHASH(), id, X, 1, deadline)));
+        Tipoff.PermitSig memory permit = _permit(pk, address(tipoff), REWARD, deadline);
+        vm.prank(relayer);
+        tipoff.resolveFor(id, X, deadline, rsig, permit);
+        assertEq(usdc.balanceOf(s), 0);
+        assertEq(tipoff.getHit(id, X).reward, REWARD);
+    }
+
+    /// Audit M-2 regression: a tip sent less than MIN_TIP_AGE before the action (a mempool front-run) never counts.
+    function test_tipInsideMinAgeNeverCounts() public {
+        uint256 id = _create();
+        uint256 late = _commit(1, id, X);
+        vm.warp(block.timestamp + tipoff.MIN_TIP_AGE() - 1);
+        vm.prank(sponsor);
+        tipoff.resolve(id, X);
+        vm.expectRevert(Tipoff.TipAfterAction.selector);
+        _prove(1, late, X);
+    }
+
+    /// Audit L-1 regression: a blocklisted winner can't block settlement; their payout waits for them.
+    function test_settle_blocklistedScoutIsDeferred() public {
+        uint256 id = _create();
+        uint256 a = _commit(0, id, X);
+        uint256 b = _commit(1, id, X);
+        vm.warp(block.timestamp + 1 minutes);
+        vm.prank(sponsor);
+        tipoff.resolve(id, X);
+        _prove(0, a, X);
+        _prove(1, b, X);
+        usdc.setBlocked(scouts[1], true);
+        vm.warp(tipoff.getHit(id, X).claimDeadline + 1);
+        tipoff.settle(id, X);
+        assertGt(usdc.balanceOf(scouts[0]), 0, "other winners paid");
+        uint256 owed = tipoff.owed(address(usdc), scouts[1]);
+        assertGt(owed, 0);
+        assertEq(tipoff.totalOwed(address(usdc)), owed);
+        assertEq(tipoff.getProgram(id).openHits, 0, "sponsor is not blocked");
+
+        vm.prank(scouts[1]);
+        vm.expectRevert(); // still blocked: the token's blocklist applies, funds can't be redirected
+        tipoff.withdrawOwed(address(usdc));
+        usdc.setBlocked(scouts[1], false);
+        vm.prank(scouts[1]);
+        tipoff.withdrawOwed(address(usdc));
+        assertEq(usdc.balanceOf(scouts[1]), owed);
+        assertEq(tipoff.totalOwed(address(usdc)), 0);
+    }
+
+    function test_withdrawOwedFor_relayedToSignerOnly() public {
+        uint256 id = _create();
+        uint256 a = _commit(1, id, X);
+        vm.warp(block.timestamp + 1 minutes);
+        vm.prank(sponsor);
+        tipoff.resolve(id, X);
+        _prove(1, a, X);
+        usdc.setBlocked(scouts[1], true);
+        vm.warp(tipoff.getHit(id, X).claimDeadline + 1);
+        tipoff.settle(id, X);
+        usdc.setBlocked(scouts[1], false);
+        uint256 owed = tipoff.owed(address(usdc), scouts[1]);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _sign(
+            scoutPks[1], keccak256(abi.encode(tipoff.WITHDRAW_OWED_TYPEHASH(), address(usdc), uint256(0), deadline))
+        );
+        vm.expectRevert(Tipoff.InvalidSignature.selector); // someone else's account can't use this signature
+        tipoff.withdrawOwedFor(address(usdc), scouts[2], deadline, sig);
+        vm.prank(relayer);
+        tipoff.withdrawOwedFor(address(usdc), scouts[1], deadline, sig);
+        assertEq(usdc.balanceOf(scouts[1]), owed);
+        vm.expectRevert(Tipoff.InvalidSignature.selector); // replay
+        tipoff.withdrawOwedFor(address(usdc), scouts[1], deadline, sig);
+    }
+
+    /// Audit M-1 regression: evidence always names one workflow; a foreign workflow's report is rejected.
+    function test_resolverConfig_requiresWorkflow_andRejectsForeignReports() public {
+        vm.startPrank(owner);
+        vm.expectRevert(Tipoff.InvalidParams.selector);
+        tipoff.setResolverConfig(forwarder, bytes32(0), workflowOwner);
+        vm.expectRevert(Tipoff.InvalidParams.selector);
+        tipoff.setResolverConfig(forwarder, WORKFLOW_ID, address(0));
+        vm.stopPrank();
+
+        uint256 id = _create();
+        bytes memory foreign = abi.encodePacked(keccak256("other"), bytes10("x"), workflowOwner, bytes2(0));
+        vm.prank(forwarder);
+        vm.expectRevert(Tipoff.UnexpectedWorkflow.selector);
+        tipoff.onReport(foreign, abi.encode(id, X, uint64(block.timestamp), bytes32(0)));
+    }
+
+    /// Audit L-2 regression: once programs exist, a new resolver waits RESOLVER_DELAY; disabling is immediate.
+    function test_resolverConfig_timelockedOncePrograms() public {
+        _create();
+        address next = makeAddr("nextForwarder");
+        vm.prank(owner);
+        tipoff.setResolverConfig(next, WORKFLOW_ID, workflowOwner);
+        assertEq(tipoff.forwarder(), forwarder, "not applied yet");
+        vm.expectRevert(Tipoff.TooEarly.selector);
+        tipoff.applyResolverConfig();
+        vm.warp(block.timestamp + tipoff.RESOLVER_DELAY());
+        tipoff.applyResolverConfig();
+        assertEq(tipoff.forwarder(), next);
+        vm.expectRevert(Tipoff.NothingPending.selector);
+        tipoff.applyResolverConfig();
+
+        vm.prank(owner);
+        tipoff.setResolverConfig(address(0), bytes32(0), address(0));
+        assertEq(tipoff.forwarder(), address(0), "disable is immediate");
     }
 
     function test_resolve_closedAfterTailGrace() public {
@@ -299,7 +568,7 @@ contract TipoffTest is TipoffBase {
         bytes memory sig =
             _sign(sponsorPk, keccak256(abi.encode(tipoff.RESOLVE_TYPEHASH(), id, X, tipoff.nonces(sponsor), deadline)));
         vm.prank(relayer);
-        tipoff.resolveFor(id, X, deadline, sig);
+        tipoff.resolveFor(id, X, deadline, sig, _noPermit());
         assertEq(tipoff.getHit(id, X).source, tipoff.SOURCE_SPONSOR());
 
         // A scout's signature cannot resolve for the sponsor.
@@ -307,7 +576,7 @@ contract TipoffTest is TipoffBase {
             scoutPks[0], keccak256(abi.encode(tipoff.RESOLVE_TYPEHASH(), id, Y, tipoff.nonces(sponsor), deadline))
         );
         vm.expectRevert(Tipoff.InvalidSignature.selector);
-        tipoff.resolveFor(id, Y, deadline, bad);
+        tipoff.resolveFor(id, Y, deadline, bad, _noPermit());
     }
 
     // ─── onReport (evidence) ───────────────────────────────────────────────────────────────────────────────────────
@@ -381,7 +650,7 @@ contract TipoffTest is TipoffBase {
         uint256 t1 = _commit(1, id, X);
         uint256 t2 = _commit(2, id, X);
         uint256 t3 = _commit(3, id, X);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
 
@@ -403,7 +672,7 @@ contract TipoffTest is TipoffBase {
         uint256 t1 = _commit(1, id, X);
         uint256 t2 = _commit(2, id, X);
         uint256 t3 = _commit(3, id, X);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
         _prove(0, t0, X);
@@ -416,7 +685,7 @@ contract TipoffTest is TipoffBase {
     function test_prove_rejectsWrongSaltAndCandidate() public {
         uint256 id = _create();
         uint256 t0 = _commit(0, id, X);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.startPrank(sponsor);
         tipoff.resolve(id, X);
         tipoff.resolve(id, Y);
@@ -444,7 +713,7 @@ contract TipoffTest is TipoffBase {
         uint256 id = _create();
         uint256 t0 = _commit(0, id, X);
         uint256 t1 = _commit(1, id, X);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
         _prove(0, t0, X);
@@ -457,13 +726,13 @@ contract TipoffTest is TipoffBase {
 
     // ─── Settle ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    function test_settle_paysGeometricSplitAndFee() public {
+    function test_settle_paysCurveSplitAndFee() public {
         uint256 id = _create();
         uint256[3] memory t;
         for (uint256 i = 0; i < 3; ++i) {
             t[i] = _commit(i, id, X);
         }
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
         for (uint256 i = 0; i < 3; ++i) {
@@ -476,12 +745,17 @@ contract TipoffTest is TipoffBase {
         vm.warp(tipoff.getHit(id, X).claimDeadline + 1);
         tipoff.settle(id, X);
 
+        // Free tips with base weight == depth buy 1/2, 1/6 and 1/12 of the depth in shares: a 6/9, 2/9, 1/9 split.
         uint256 fee = (uint256(REWARD) * FEE_BPS) / 10_000; // 3.5 USDC
         uint256 net = REWARD - fee;
+        uint256 total = 50e6 + 16_666_666 + 8_333_333;
         assertEq(usdc.balanceOf(feeRecipient), fee);
-        assertEq(usdc.balanceOf(scouts[0]), net - (net * 2) / 7 - net / 7); // 4/7 plus any dust
-        assertEq(usdc.balanceOf(scouts[1]), (net * 2) / 7);
-        assertEq(usdc.balanceOf(scouts[2]), net / 7);
+        assertEq(usdc.balanceOf(scouts[1]), (net * 16_666_666) / total);
+        assertEq(usdc.balanceOf(scouts[2]), (net * 8_333_333) / total);
+        assertEq(
+            usdc.balanceOf(scouts[0]), net - usdc.balanceOf(scouts[1]) - usdc.balanceOf(scouts[2]), "rank 0 takes dust"
+        );
+        assertApproxEqRel(usdc.balanceOf(scouts[0]), (net * 6) / 9, 1e12);
         assertEq(tipoff.getProgram(id).openHits, 0);
         assertTrue(tipoff.getHit(id, X).settled);
 
@@ -492,7 +766,7 @@ contract TipoffTest is TipoffBase {
     function test_settle_loneFinderTakesAll() public {
         uint256 id = _create();
         uint256 t0 = _commit(0, id, X);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
         _prove(0, t0, X);
@@ -517,7 +791,7 @@ contract TipoffTest is TipoffBase {
     function test_withdraw_onlyAfterTailAndSettlement() public {
         uint256 id = _create();
         uint256 t0 = _commit(0, id, X);
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
         _prove(0, t0, X);
@@ -540,7 +814,7 @@ contract TipoffTest is TipoffBase {
         uint256 before = usdc.balanceOf(sponsor);
         vm.prank(sponsor);
         tipoff.withdrawRemainder(id);
-        assertEq(usdc.balanceOf(sponsor), before + BOUNTY - REWARD);
+        assertEq(usdc.balanceOf(sponsor), before + BOUNTY, "the whole bond comes back");
         assertEq(tipoff.getProgram(id).available, 0);
     }
 
@@ -578,7 +852,8 @@ contract TipoffTest is TipoffBase {
         tipoff.settle(id, X);
 
         uint256 net = REWARD - (uint256(REWARD) * FEE_BPS) / 10_000;
-        assertEq(usdc.balanceOf(scouts[0]), net - net / 3); // 2/3 plus the dust
-        assertEq(usdc.balanceOf(scouts[1]), net / 3);
+        uint256 second = (net * 16_666_666) / (50e6 + 16_666_666); // shares 50 : 16.67, so 3/4 and 1/4
+        assertEq(usdc.balanceOf(scouts[1]), second);
+        assertEq(usdc.balanceOf(scouts[0]), net - second);
     }
 }

@@ -1,15 +1,16 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CandidateKind, feeOf, MIN_CLAIM_DAYS, MIN_TAIL_DAYS, payoutSplit } from "@tipoff/core";
+import { CandidateKind, feeOf, MIN_CLAIM_DAYS, MIN_TAIL_DAYS, payoutFor } from "@tipoff/core";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { type Address, isAddress, parseUnits } from "viem";
-import { ActionError, createProgram, devAction, usdcBalance } from "@/lib/client/actions";
+import { ActionError, createProgram, usdcBalance } from "@/lib/client/actions";
 import { useSession } from "@/lib/client/session";
-import { config } from "@/lib/config";
+import { config, tokenLabel } from "@/lib/config";
 import { shortAddress, usdc } from "@/lib/format";
+import { FaucetButton } from "./faucet-button";
 import { ArrowRight, Lock } from "./icons";
 import { useSignIn } from "./sign-in";
 import { useToast } from "./toast";
@@ -29,6 +30,8 @@ type Form = {
   claimDays: number;
   treasuries: string;
   minPayment: string;
+  convictionScale: string;
+  minStake: string;
 };
 
 const initial: Form = {
@@ -45,6 +48,8 @@ const initial: Form = {
   claimDays: 30,
   treasuries: "",
   minPayment: "100",
+  convictionScale: "100",
+  minStake: "0",
 };
 
 function toUnits(v: string): bigint | null {
@@ -71,6 +76,10 @@ function validate(f: Form): Partial<Record<keyof Form, string>> {
   if (list.some((a) => !isAddress(a))) e.treasuries = "One of these isn't a valid address.";
   if (list.length > 5) e.treasuries = "Up to five treasuries.";
   if (toUnits(f.minPayment || "0") === null) e.minPayment = "Enter an amount.";
+  const scale = toUnits(f.convictionScale);
+  if (!scale || scale === 0n) e.convictionScale = "Enter a stake size above zero.";
+  else if (scale >= 2n ** 128n) e.convictionScale = "That's too large.";
+  if (toUnits(f.minStake || "0") === null) e.minStake = "Enter an amount.";
   return e;
 }
 
@@ -100,7 +109,10 @@ export function SponsorForm() {
   const reward = toUnits(f.reward) ?? 0n;
   const hits = reward > 0n ? Number(bounty / reward) : 0;
   const fee = feeOf(reward, config.feeBps);
-  const split = payoutSplit(reward - fee, f.topK);
+  const scale = toUnits(f.convictionScale) || 1n;
+  const curve = { baseWeight: scale, curveDepth: scale };
+  const split = payoutFor(reward - fee, Array(f.topK).fill(0n), curve);
+  const staked = payoutFor(reward - fee, [scale, ...Array(f.topK - 1).fill(0n)], curve);
   const short = balance.data !== undefined && balance.data < bounty;
 
   async function submit(e: React.FormEvent) {
@@ -134,6 +146,8 @@ export function SponsorForm() {
         maxTipsPerScout: f.maxTips,
         treasuries,
         minPaymentUsdc: f.minPayment || "0",
+        convictionScaleUsdc: f.convictionScale,
+        minStakeUsdc: f.minStake || "0",
       });
       await qc.invalidateQueries({ queryKey: ["snapshot"] });
       toast({ title: "Program live", body: `$${usdc(bounty)} locked. Scouts can tip now.`, tone: "ok" });
@@ -160,7 +174,7 @@ export function SponsorForm() {
             <input
               id="title"
               className="field"
-              placeholder="Founders we'll fund this quarter"
+              placeholder="Artists we'll commission this season"
               value={f.title}
               maxLength={80}
               onChange={(e) => set("title", e.target.value)}
@@ -175,7 +189,7 @@ export function SponsorForm() {
             <input
               id="sponsorName"
               className="field"
-              placeholder="Northlight Ventures"
+              placeholder="Glasshouse DAO"
               value={f.sponsorName}
               maxLength={60}
               onChange={(e) => set("sponsorName", e.target.value)}
@@ -186,7 +200,7 @@ export function SponsorForm() {
             <textarea
               id="brief"
               className="field min-h-24 leading-relaxed"
-              placeholder="Pre-seed teams building consumer apps on Monad…"
+              placeholder="We commission two onchain artists a month for our collection…"
               value={f.brief}
               maxLength={600}
               onChange={(e) => set("brief", e.target.value)}
@@ -199,7 +213,7 @@ export function SponsorForm() {
             <input
               id="lookingFor"
               className="field"
-              placeholder="A shipping team, real users, a reason they're early"
+              placeholder="A distinct style, a small crowd that keeps coming back, a reason they're early"
               value={f.lookingFor}
               maxLength={200}
               onChange={(e) => set("lookingFor", e.target.value)}
@@ -295,7 +309,49 @@ export function SponsorForm() {
           />
         </Section>
 
-        <Section n="04" title="Evidence" hint="Payments from these wallets to a tipped candidate count as acting.">
+        <Section n="04" title="Conviction" hint="Scouts can back a tip with a stake that's always refunded.">
+          <p className="text-sm leading-relaxed text-ink-2">
+            Each hit is split by shares bought on a curve that gets dearer as tips pile onto a candidate. A stake buys
+            more shares; it can't be lost. You alone see each candidate's price, which tells you how strongly scouts
+            back it.
+          </p>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="convictionScale" hint="USDC">
+                Stake scale
+              </Label>
+              <input
+                id="convictionScale"
+                inputMode="decimal"
+                className="field numeric"
+                value={f.convictionScale}
+                onChange={(e) => set("convictionScale", e.target.value)}
+                aria-invalid={Boolean(err("convictionScale"))}
+                aria-describedby="convictionScale-hint"
+              />
+              <FieldError>{err("convictionScale")}</FieldError>
+              <p id="convictionScale-hint" className="mt-1.5 text-xs leading-relaxed text-ink-3">
+                A stake this size lifts a first tip's share by a third. Far larger stakes can't more than double it.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="minStake" hint="USDC, 0 for free tips">
+                Minimum stake
+              </Label>
+              <input
+                id="minStake"
+                inputMode="decimal"
+                className="field numeric"
+                value={f.minStake}
+                onChange={(e) => set("minStake", e.target.value)}
+                aria-invalid={Boolean(err("minStake"))}
+              />
+              <FieldError>{err("minStake")}</FieldError>
+            </div>
+          </div>
+        </Section>
+
+        <Section n="05" title="Evidence" hint="Payments from these wallets to a tipped candidate count as acting.">
           <div>
             <Label htmlFor="treasuries" hint="Comma or space separated, up to 5">
               Treasury wallets
@@ -341,7 +397,7 @@ export function SponsorForm() {
             </dl>
 
             <div className="mt-6 rounded-2xl bg-paper px-4 py-4">
-              <p className="eyebrow">Each hit pays</p>
+              <p className="eyebrow">Each hit pays, unstaked</p>
               <ul className="mt-3 space-y-1.5 text-sm">
                 {split.map((a, i) => (
                   <li key={i} className="flex justify-between">
@@ -349,6 +405,12 @@ export function SponsorForm() {
                     <span className="numeric">${usdc(a)}</span>
                   </li>
                 ))}
+                {f.topK > 1 ? (
+                  <li className="flex justify-between text-ink-3">
+                    <span>Scout 1 staking ${f.convictionScale || "0"}</span>
+                    <span className="numeric">${usdc(staked[0] ?? 0n)}</span>
+                  </li>
+                ) : null}
                 <li className="flex justify-between border-t border-rule pt-1.5 text-ink-3">
                   <span>Tipoff fee ({config.feeBps / 100}%)</span>
                   <span className="numeric">${usdc(fee)}</span>
@@ -359,28 +421,8 @@ export function SponsorForm() {
             {me ? (
               <p className={`mt-5 text-sm ${short ? "text-signal-ink" : "text-ink-3"}`}>
                 Your balance: <span className="numeric">${balance.data !== undefined ? usdc(balance.data) : "…"}</span>{" "}
-                USDC
-                {short && config.devTools ? (
-                  <button
-                    type="button"
-                    className="ml-2 underline underline-offset-4"
-                    onClick={async () => {
-                      await devAction("faucet", { address: me });
-                      await balance.refetch();
-                    }}
-                  >
-                    Mint test USDC
-                  </button>
-                ) : short && config.chainId === 10143 ? (
-                  <a
-                    className="ml-2 underline underline-offset-4"
-                    href="https://faucet.circle.com"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Get testnet USDC
-                  </a>
-                ) : null}
+                {tokenLabel}
+                {short ? <FaucetButton address={me} className="ml-2 underline underline-offset-4" /> : null}
               </p>
             ) : null}
 

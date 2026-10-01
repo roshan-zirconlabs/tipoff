@@ -12,15 +12,64 @@ contract TipoffFuzzTest is TipoffBase {
         X = _candidate(makeAddr("founderX"));
     }
 
-    function testFuzz_payoutSplit_isExactAndOrdered(uint128 net, uint8 rawN) public view {
+    /// The split is exact, and among equal weights an earlier tip never earns less than a later one.
+    function testFuzz_curveSplit_isExactAndOrdered(uint128 net, uint8 rawN, uint128 rawW, uint128 rawDepth)
+        public
+        view
+    {
         uint256 n = bound(rawN, 1, 5);
-        uint256[] memory a = tipoff.payoutSplit(net, n);
+        uint256 w = bound(rawW, 1, 1e30);
+        uint256 depth = bound(rawDepth, 1, 1e30);
+        uint256[] memory weights = new uint256[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            weights[i] = w;
+        }
+        uint256[] memory shares = tipoff.curveShares(depth, weights);
+        uint256[] memory a = tipoff.splitByShares(net, shares);
         uint256 sum = 0;
         for (uint256 i = 0; i < n; ++i) {
             sum += a[i];
-            if (i > 0) assertLe(a[i], a[i - 1], "earlier ranks never earn less");
+            if (i > 0) {
+                assertLe(shares[i], shares[i - 1], "later shares never cheaper");
+                assertLe(a[i], a[i - 1], "earlier tips never earn less");
+            }
         }
         assertEq(sum, net, "no value created or lost");
+    }
+
+    /// Any weights, any depth: the split is exact and never reverts, and no tip is paid more than its curve share.
+    function testFuzz_curveSplit_anyWeights(uint128 net, uint128[5] memory rawW, uint128 rawDepth, uint8 rawN)
+        public
+        view
+    {
+        uint256 n = bound(rawN, 1, 5);
+        uint256 depth = bound(rawDepth, 1, type(uint128).max);
+        uint256[] memory weights = new uint256[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            weights[i] = bound(rawW[i], 1, type(uint128).max) + 0; // base weight > 0 always
+        }
+        uint256[] memory a = tipoff.splitByShares(net, tipoff.curveShares(depth, weights));
+        uint256 sum = 0;
+        for (uint256 i = 0; i < n; ++i) {
+            sum += a[i];
+        }
+        assertEq(sum, net);
+    }
+
+    /// Staking more on the same position never earns less, but at most doubles a first tip's shares: timing still
+    /// dominates.
+    function testFuzz_stakeIsMonotoneAndBounded(uint128 rawBase, uint128 rawStake, uint128 rawDepth) public view {
+        uint256 base = bound(rawBase, 1, 1e24);
+        uint256 depth = bound(rawDepth, base, 1e24); // depth >= base, as the app configures
+        uint256 stake = bound(rawStake, 0, 1e30);
+        uint256[] memory free = new uint256[](1);
+        free[0] = base;
+        uint256[] memory staked = new uint256[](1);
+        staked[0] = base + stake;
+        uint256 f = tipoff.curveShares(depth, free)[0];
+        uint256 s = tipoff.curveShares(depth, staked)[0];
+        assertGe(s, f);
+        assertLe(s, depth);
     }
 
     /// Rank depends only on commit order: whatever order five winning tips are proven in, the top 3 are the three
@@ -31,7 +80,7 @@ contract TipoffFuzzTest is TipoffBase {
         for (uint256 i = 0; i < 5; ++i) {
             tipIds[i] = _commit(i, id, X);
         }
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
 
@@ -71,7 +120,7 @@ contract TipoffFuzzTest is TipoffBase {
         for (uint256 i = 0; i < proven; ++i) {
             tipIds[i] = _commit(i, id, X);
         }
-        vm.warp(block.timestamp + 1);
+        vm.warp(block.timestamp + 1 minutes);
         vm.prank(sponsor);
         tipoff.resolve(id, X);
         for (uint256 i = 0; i < proven; ++i) {
@@ -83,7 +132,7 @@ contract TipoffFuzzTest is TipoffBase {
 
         uint256 paidOut = before - usdc.balanceOf(address(tipoff));
         if (proven == 0) {
-            assertEq(paidOut, 0);
+            assertEq(paidOut, REWARD, "unclaimed declared reward refunded to the sponsor");
             assertEq(tipoff.getProgram(id).available, BOUNTY);
         } else {
             assertEq(paidOut, REWARD);

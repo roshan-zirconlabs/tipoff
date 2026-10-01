@@ -61,7 +61,7 @@ export default async function ScoutPage({ params }: { params: Promise<{ address:
                 </p>
                 <p className="mt-0.5 text-sm text-ink-3">
                   Acted {dateTime(w.actedAt)} ·{" "}
-                  {w.source === "evidence" ? "resolved by evidence" : "declared by sponsor"}
+                  {w.source === "evidence" ? "resolved by evidence" : "declared by patron"}
                 </p>
               </div>
               <span className="numeric text-lg">${usdc(w.amount)}</span>

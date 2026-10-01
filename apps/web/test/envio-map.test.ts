@@ -18,6 +18,10 @@ const data: EnvioData = {
       claimWindow: "604800",
       topK: 2,
       maxTipsPerScout: 3,
+      baseWeight: "100000000",
+      minStake: "0",
+      curveDepth: "100000000",
+      staked: "5000000",
       sealKey: `0x${"11".repeat(32)}`,
       evidenceSpec: "0x",
       metadata: '{"title":"Founders"}',
@@ -33,6 +37,8 @@ const data: EnvioData = {
     programId: "1",
     scout: `0x${id.repeat(40)}`,
     commitment: B32,
+    stake: id === "1" ? "5000000" : "0",
+    stakeReturned: false,
     committedAt: `${1000 + Number(id)}`,
     sponsorEnvelope: "0x01",
     scoutEnvelope: "0x02",
@@ -70,7 +76,10 @@ describe("snapshotFromEnvio", () => {
       topK: 2,
       metadata: { title: "Founders" },
       available: "2000000000",
+      curveDepth: "100000000",
+      staked: "5000000",
     });
+    expect(s.tips.find((t) => t.tipId === 1)).toMatchObject({ stake: "5000000", stakeReturned: false });
     expect(p?.hits[0]).toMatchObject({ source: "evidence", topTipIds: [1, 3], proven: 2, settled: false });
     expect(s.tips.map((t) => t.tipId)).toEqual([3, 2, 1]);
   });

@@ -33,6 +33,12 @@ export type ProgramView = {
   createdAt: number;
   topK: number;
   maxTipsPerScout: number;
+  /** Curve parameters (base units): every tip weighs baseWeight + stake; depth sets how fast shares get dearer. */
+  baseWeight: string;
+  minStake: string;
+  curveDepth: string;
+  /** Stakes the contract still holds for this program. */
+  staked: string;
   sealKey: Hex;
   tipCount: number;
   openHits: number;
@@ -50,6 +56,8 @@ export type TipView = {
   programId: number;
   scout: Address;
   commitment: Hex;
+  stake: string;
+  stakeReturned: boolean;
   committedAt: number;
   sponsorEnvelope: Hex;
   scoutEnvelope: Hex;

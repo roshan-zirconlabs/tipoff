@@ -13,7 +13,9 @@
       "!indexer/.envio",
       "!indexer/envio-env.d.ts",
       "!packages/core/src/abi.ts",
-      "!**/next-env.d.ts"
+      "!**/next-env.d.ts",
+      "!**/.cre_build_tmp.js",
+      "!.tipoff"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },

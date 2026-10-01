@@ -259,26 +259,53 @@ Events (everything the indexer and the sponsor dashboard need):
 | Commit window | `block.timestamp <= tipDeadline`; `tipsByScout < maxTipsPerScout` |
 | No sponsor self-scouting | `scout != sponsor` (limited — see §9) |
 | Commitment | `keccak256(abi.encode(programId, scout, candidateId, salt)) == pick.commitment` |
-| Pick predates the action | `pick.committedAt < hit.actedAt` — no copying public news |
+| Pick predates the action | `pick.committedAt + MIN_TIP_AGE (60 s) <= hit.actedAt` — no copying public news, and no front-running the action's pending transaction, which names the candidate (audit M-2) |
+| The bond backs evidence | A sponsor-declared hit is paid from the sponsor's wallet at `resolve` (permit via `resolveFor`); only evidence hits draw on the locked bounty. Sham declarations can't drain it (audit H-1). Unclaimed declared rewards go back to the sponsor, unclaimed evidence rewards back to the bond |
 | Action inside the tail | `createdAt <= actedAt <= tailEnd`, one hit per `(program, candidate)` — reports are idempotent |
 | Rank is commit order | `topTipIds` kept sorted by `tipId` on insertion, bounded by `topK` (O(K), K ≤ 5) — prove order never matters |
-| Payout | geometric weights `2^(n-1-i) / (2^n - 1)` over the `n` ranks actually proven (a lone finder gets 100%); **rank 0 takes rounding dust** so earlier ranks never earn less (found by fuzzing); fee set at deploy, hard cap `MAX_FEE_BPS = 100` (1%), deployed at 50 (0.5%) |
+| Payout | sealed bonding curve (§6.4) replayed over the `n` tips actually proven, in commit order; split pro rata to shares (a lone finder gets 100%); **rank 0 takes rounding dust**; equal split if every share rounds to zero; fee set at deploy, hard cap `MAX_FEE_BPS = 100` (1%), deployed at 50 (0.5%) |
+| Curve params | `baseWeight > 0`, `curveDepth > 0`, `stake >= minStake`, all fixed at creation and covered by the signed params hash |
+| Stakes | pulled at commit (`safeTransferFrom` or permit); `returnStake(tipId)` is permissionless after `tipDeadline` and always pays `tip.scout`; settlement uses the stake recorded at commit, so returning it never changes a payout; `Program.staked` is tracked apart from the bounty and never blocks `withdrawRemainder` |
 | Unclaimed | a hit with no proven tips returns its whole reward to `available` at settlement |
 | No backdating | `resolve` stamps `block.timestamp`; only CRE evidence carries its own `actedAt`. Resolving before anyone tips is how a sponsor publicly excludes a candidate it already knew |
 | Sponsor lock | `withdrawRemainder` only after `tailEnd + claimWindow` **and** `openHits == 0` |
-| CRE auth | `msg.sender == forwarder`, metadata `workflowId`/`workflowOwner` match; report decodes to `(programId, candidateId, actedAt, evidenceRef)` |
-| Relayed intents | EIP-712 + `Nonces` + `deadline`; `envelopesHash` is signed, so the relayer cannot swap ciphertexts |
+| CRE auth | `msg.sender == forwarder`, metadata `workflowId`/`workflowOwner` **always** match (both required whenever a forwarder is set — the production forwarder delivers any workflow's report to the receiver it names; audit M-1); report decodes to `(programId, candidateId, actedAt, evidenceRef)` |
+| Resolver changes | Immediate only before the first program exists, or to disable evidence; otherwise proposed and applied after `RESOLVER_DELAY` (2 days) via permissionless `applyResolverConfig` (audit L-2) |
+| Payouts never block | `settle` pushes with `trySafeTransfer`; a refused transfer (e.g. USDC blocklist) is held in `owed` for the recipient's own `withdrawOwed`, never redirected (audit L-1) |
+| Relayed intents | EIP-712 + `Nonces` + `deadline`; `envelopesHash` and `stake` are signed, so the relayer can't swap ciphertexts or inflate a stake |
 
 EIP-712 types (single source in `packages/core/typed-data.ts`):
 
 ```
-CommitTip(uint256 programId,bytes32 commitment,bytes32 envelopesHash,uint256 nonce,uint256 deadline)
+CommitTip(uint256 programId,bytes32 commitment,uint256 stake,bytes32 envelopesHash,uint256 nonce,uint256 deadline)
 CreateProgram(bytes32 paramsHash,uint256 nonce,uint256 deadline)
 Resolve(uint256 programId,bytes32 candidateId,uint256 nonce,uint256 deadline)
 WithdrawRemainder(uint256 programId,uint256 nonce,uint256 deadline)
 ```
 
-### 6.4 Monad-specific decisions
+### 6.4 Sealed bonding curve (the conviction layer)
+
+There is no order book and nothing to match: scouts aren't trading with each other, they're racing to name a candidate
+first. The curve prices that race. Every tip carries weight `w = baseWeight + stake`. At settlement the proven tips are
+replayed in commit order, and tip *i* buys
+
+```
+shares_i = L² · w_i / ((L + S_i)(L + S_i + w_i))      L = curveDepth, S_i = weight committed before it
+```
+
+which is the integral of a spot price `(1 + S/L)²`: shares get dearer as weight piles onto a candidate. The reward is
+split pro rata to shares (`mulDiv` throughout, mirrored bit-for-bit in `packages/core` `curveShares`/`splitByShares`).
+
+- **Sealed.** The chain sees each stake but never its candidate, so no public price exists while tipping is open. Only
+  the sponsor, who can open every tip, sees each candidate's implied price. That's the sponsor dashboard's conviction
+  board: candidates ranked by committed weight, with a projected split if the sponsor acted now.
+- **Timing first.** A stake is bounded: shares `< L²/(L+S)`. With the app's default `baseWeight = curveDepth`, free tips
+  split 6/9 · 2/9 · 1/9, and a stake can at most double a first tip's shares. An earlier free tip always beats any later
+  tip, however large its stake.
+- **No loss.** Stakes are refunded in full after tipping closes, win or lose. A stake costs the scout time value only,
+  and it's locked, so flash loans can't fake conviction.
+
+### 6.5 Monad-specific decisions
 
 - **Gas is charged on the gas limit, not gas used.** The relayer sets `gas = estimate × 1.1` and never uses a default
   limit. There are no unbounded loops (`topK ≤ 5`).
@@ -325,6 +352,19 @@ return the tx hash. It holds no user funds, only MON for gas. The contract caps 
 The relayer adds a per-address daily cap and a global daily gas budget. Its key comes from an env var for the
 hackathon; move it to a KMS after.
 
+### 7.3.1 Relayer limits and keeper
+
+- **Budgets.** Monad charges the gas *limit*, so a relay's cost (`limit × maxFeePerGas`) is known before it is sent.
+  Each relay is charged to its actor (the intent's signer, or the one-shot object a permissionless call acts on) and to a
+  global daily cap (`RELAYER_ACTOR_DAILY_MON`, `RELAYER_DAILY_MON`). Below `RELAYER_MIN_BALANCE_MON` the relayer pauses and
+  tells the user to send from a funded wallet; the direct contract paths always remain.
+- **Nonces.** Sends are serialized in-process, so concurrent relays and keeper runs never reuse a nonce.
+- **Keeper.** `GET /api/keeper` (Bearer `CRON_SECRET`) settles hits whose claim window closed and returns stakes once
+  tipping closed, oldest first, capped per run. Every call is permissionless and pays the right party, so the keeper
+  needs no trust; the secret only protects the relayer's gas. Scheduled by `apps/web/vercel.json`.
+- **Held payouts.** A payout the token refuses (blocklist, pause) is held in `owed`; `withdrawOwedFor` lets a passkey
+  scout pull it through the relayer, to the signer only.
+
 ### 7.4 Read model
 
 M1 (built): `apps/web/lib/server/snapshot.ts` derives all state from Tipoff's own events, fetched incrementally —
@@ -354,7 +394,7 @@ the ArbitraX track-record idea turned onto sponsors.
 
 ## 8. Addresses & network constants (verified from official docs)
 
-**Deployed:** Tipoff on Monad testnet at `0x196d4119944CD005AD917466B8e2e2Ec018FA547` (start block 65,647,989),
+**Deployed:** Tipoff on Monad testnet at `0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707` (start block 67,037,405),
 owner/fee recipient `0x02847D22…b213`, relayer `0xA1EEDaB2…E634`, forwarder = CRE simulation forwarder. Testnet USDC
 permit domain verified on-chain: name `USDC`, version `2` (no EIP-5267).
 
@@ -380,13 +420,14 @@ docs.chain.link/cre (forwarder directory, supported networks).
 | Sponsor acts, never resolves | Evidence resolver settles it; bounty locked until `tailEnd + claimWindow` | — |
 | Sponsor waits out the window | Tail ≥ 90 days, enforced | Deals after the tail aren't covered (same as recruiting) |
 | Sponsor pays from an undeclared wallet | Treasuries are declared up front, and the sponsor record shows how each hit was resolved | **Not enforceable on-chain.** Stated openly |
-| Sponsor sybil-scouts its own program to claw back the bounty | Rank = commit order: a copy made after seeing a pick always ranks below it; geometric weights favour rank 1 | Can capture lower-rank shares |
+| Sponsor sybil-scouts its own program to claw back the bounty | Declared hits are paid from the sponsor's wallet, so sham declarations never touch the bond (audit H-1). Rank = commit order, and the curve makes later shares dearer | **Evidence-path self-dealing:** a sponsor can pay a wallet it controls from a declared treasury, after its sybil tipped that wallet, and spend the bond on itself. Not preventable on-chain; it leaves a public treasury payment to a fresh wallet, which the sponsor record should surface |
+| Whale buys a candidate's payout with a huge stake | Shares per tip are bounded (`< L²/(L+S)`); stakes are locked until tipping closes | Can crowd out later tips on the same candidate, which is the intended cost of arriving late |
 | Scout copies public news | `committedAt < actedAt` | Label adapter uses the release date, so announcements before release are a gap → adapter B is a stretch goal |
 | Scout sprays many candidates | Unbounded candidate space, `maxTipsPerScout`, relayer caps | Sybil accounts are cheap; later: a scout record weights sponsor attention |
 | Relayer censorship | Direct `commitTip` path | — |
 | CRE report replay | One hit per `(program, candidate)` | — |
 | Reentrancy / odd tokens | Token allowlist (USDC/AUSD), `SafeERC20`, checks-effects-interactions, `ReentrancyGuardTransient` | — |
-| Regulatory (event contracts / gambling) | Scouts never stake. The sponsor funds all payouts, and picking is free | Needs legal review before scale |
+| Regulatory (event contracts / gambling) | Stakes are optional and always refunded in full, so a scout can't lose money. The sponsor funds all payouts, and picking is free | Needs legal review before scale |
 
 ---
 

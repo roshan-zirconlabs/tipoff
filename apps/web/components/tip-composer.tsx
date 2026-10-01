@@ -1,14 +1,16 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { CandidateInputError, CandidateKind, MAX_NOTE_CHARS, parseCandidate } from "@tipoff/core";
+import { CandidateInputError, CandidateKind, MAX_NOTE_CHARS, parseCandidate, stakeBoost } from "@tipoff/core";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
+import { formatUnits, parseUnits } from "viem";
 import { ActionError, sendTip } from "@/lib/client/actions";
 import { useSession } from "@/lib/client/session";
 import { explorerTx } from "@/lib/config";
-import { pad, shortHash } from "@/lib/format";
+import { dateTime, pad, shortHash, usdc } from "@/lib/format";
 import type { ProgramView } from "@/lib/types";
+import { FaucetButton } from "./faucet-button";
 import { ArrowRight, Lock } from "./icons";
 import { useSignIn } from "./sign-in";
 import { Stamp } from "./stamp";
@@ -26,11 +28,19 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
   const [candidate, setCandidate] = useState("");
   const [label, setLabel] = useState("");
   const [note, setNote] = useState("");
-  const [error, setError] = useState<{ field?: "candidate"; message: string } | null>(null);
+  const [stakeInput, setStakeInput] = useState(() => formatUnits(BigInt(program.minStake), 6));
+  const [error, setError] = useState<{ field?: "candidate" | "stake"; message: string } | null>(null);
 
   const kind = program.metadata.candidateKind;
   const left = Math.max(0, program.maxTipsPerScout - used);
   const isSponsor = session.profile?.address.toLowerCase() === program.sponsor.toLowerCase();
+  const curve = { baseWeight: BigInt(program.baseWeight), curveDepth: BigInt(program.curveDepth) };
+  const stake = parseStake(stakeInput);
+  const boost = stake === null ? null : stakeBoost(stake, curve);
+  const scale = BigInt(program.curveDepth);
+  const presets = [BigInt(program.minStake), scale / 4n, scale, scale * 3n].filter(
+    (v, i, all) => all.indexOf(v) === i && v >= BigInt(program.minStake),
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,13 +59,32 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
       });
       return;
     }
+    if (stake === null || stake < BigInt(program.minStake)) {
+      setError({
+        field: "stake",
+        message:
+          stake === null
+            ? "Enter an amount in USDC, like 5 or 2.5."
+            : `The minimum stake is $${usdc(program.minStake)}.`,
+      });
+      return;
+    }
     setStage({ kind: "sealing" });
     try {
-      const res = await sendTip({ program, candidate: ref, label, note, keys: session.keys, profile: session.profile });
+      const res = await sendTip({
+        program,
+        candidate: ref,
+        label,
+        note,
+        stake,
+        keys: session.keys,
+        profile: session.profile,
+      });
       setStage({ kind: "sealed", tipId: res.tipId, hash: res.hash });
       setCandidate("");
       setLabel("");
       setNote("");
+      setStakeInput(formatUnits(BigInt(program.minStake), 6));
       await qc.invalidateQueries({ queryKey: ["snapshot"] });
     } catch (err) {
       setStage({ kind: "form" });
@@ -70,7 +99,7 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
       <div className="card p-6">
         <p className="font-semibold">This is your program.</p>
         <p className="mt-1 text-sm text-ink-2">
-          Sponsors can't tip their own program. Read incoming tips in your dashboard.
+          Patrons can't tip their own program. Read incoming tips in your dashboard.
         </p>
       </div>
     );
@@ -90,7 +119,7 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
             <Stamp number={stage.tipId} size={150} />
             <h3 className="display mt-6 text-3xl">Tip #{pad(stage.tipId)} sealed.</h3>
             <p className="mt-2 max-w-sm text-ink-2">
-              Only the sponsor can read it. Its place in the queue is now fixed on-chain, ahead of every tip that comes
+              Only the patron can read it. Its place in the queue is now fixed on-chain, ahead of every tip that comes
               after.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -128,7 +157,7 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
               </span>
             </div>
             <p className="mt-1.5 text-sm text-ink-2">
-              Encrypted to the sponsor before it leaves your device. Nobody else will ever see it unless it wins.
+              Encrypted to the patron before it leaves your device. Nobody else will ever see it unless it wins.
             </p>
 
             <fieldset disabled={stage.kind === "sealing" || left === 0} className="mt-6 space-y-5">
@@ -137,7 +166,7 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
                   htmlFor="candidate"
                   hint={kind === CandidateKind.Wallet ? "Where they'd be paid" : "Deezer link or id"}
                 >
-                  {kind === CandidateKind.Wallet ? "Their wallet on Monad" : "Artist"}
+                  {kind === CandidateKind.Wallet ? "The creator's wallet" : "Artist"}
                 </Label>
                 <input
                   id="candidate"
@@ -159,7 +188,7 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
                 <input
                   id="label"
                   className="field"
-                  placeholder="Ada — payroll rails for gig workers"
+                  placeholder="Mira Osei — generative textiles"
                   maxLength={80}
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
@@ -178,11 +207,66 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
                   onChange={(e) => setNote(e.target.value)}
                 />
               </div>
+              <div>
+                <Label
+                  htmlFor="stake"
+                  hint={BigInt(program.minStake) > 0n ? `Min $${usdc(program.minStake)}` : "Optional"}
+                >
+                  Back it with a stake
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-32">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3">$</span>
+                    <input
+                      id="stake"
+                      className="field numeric pl-7"
+                      inputMode="decimal"
+                      value={stakeInput}
+                      onChange={(e) => setStakeInput(e.target.value)}
+                      aria-invalid={error?.field === "stake"}
+                      aria-describedby="stake-effect"
+                      autoComplete="off"
+                    />
+                  </div>
+                  {presets.map((v) => (
+                    <button
+                      key={`${v}`}
+                      type="button"
+                      onClick={() => setStakeInput(formatUnits(v, 6))}
+                      aria-pressed={stake === v}
+                      className="numeric h-9 rounded-full border border-rule px-3 text-sm text-ink-2 transition hover:border-ink hover:text-ink aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper"
+                    >
+                      {v === 0n ? "None" : `$${usdc(v)}`}
+                    </button>
+                  ))}
+                </div>
+                <FieldError>{error?.field === "stake" ? error.message : null}</FieldError>
+                <p id="stake-effect" className="mt-2 text-sm leading-relaxed text-ink-3">
+                  {boost !== null && stake !== null && stake > 0n && stake >= BigInt(program.minStake) ? (
+                    <>
+                      Lifts this tip's share of a hit at least{" "}
+                      <span className="numeric font-semibold text-ink">×{boost.toFixed(2)}</span>. Refunded in full when
+                      tipping closes on {dateTime(program.tipDeadline)}, win or lose.
+                    </>
+                  ) : (
+                    <>
+                      Conviction, not a bet: a stake raises your share if this candidate wins and comes back in full
+                      when tipping closes, either way. Only the patron can see which candidate it backs.
+                    </>
+                  )}
+                </p>
+              </div>
             </fieldset>
 
             {error && !error.field ? (
               <p role="alert" className="mt-4 rounded-xl bg-signal-wash px-3.5 py-3 text-sm text-signal-ink">
                 {error.message}
+                {session.profile && /holds/.test(error.message) ? (
+                  <>
+                    {" "}
+                    <FaucetButton address={session.profile.address} onDone={() => setError(null)} />
+                  </>
+                ) : null}
               </p>
             ) : null}
 
@@ -207,11 +291,22 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
                   </>
                 )}
               </Button>
-              <p className="text-xs text-ink-3">No gas. Tipping is free.</p>
+              <p className="text-xs text-ink-3">
+                {stake && stake > 0n
+                  ? `No gas. $${usdc(stake)} is held until tipping closes.`
+                  : "No gas. Tipping is free."}
+              </p>
             </div>
           </motion.form>
         )}
       </AnimatePresence>
     </div>
   );
+}
+
+function parseStake(raw: string): bigint | null {
+  const v = raw.trim().replace(/^\$/, "");
+  if (v === "") return 0n;
+  if (!/^\d+(\.\d{0,6})?$/.test(v)) return null;
+  return parseUnits(v, 6);
 }

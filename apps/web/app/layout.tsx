@@ -16,9 +16,10 @@ const bricolage = Bricolage_Grotesque({
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "Tipoff — call it first, get paid when they sign", template: "%s · Tipoff" },
+  title: { default: "Tipoff — call it first, get paid when they make it", template: "%s · Tipoff" },
   description:
-    "Sealed scout markets on Monad. Sponsors lock a bounty, scouts send sealed tips, and the earliest scouts get paid when the sponsor acts — even quietly.",
+    "Early-supporter rewards on Monad. Patrons lock a bounty for the creators they want to back, fans send sealed tip-offs, and the fans who called it first get paid when the patron pays the creator, even quietly.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
 };
 
 export const viewport: Viewport = {

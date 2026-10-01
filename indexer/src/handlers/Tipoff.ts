@@ -36,6 +36,10 @@ indexer.onEvent({ contract: "Tipoff", event: "ProgramCreated" }, async ({ event,
     claimWindow: p.claimWindow,
     topK: Number(p.topK),
     maxTipsPerScout: Number(p.maxTipsPerScout),
+    baseWeight: p.baseWeight,
+    minStake: p.minStake,
+    curveDepth: p.curveDepth,
+    staked: 0n,
     sealKey: p.sealKey,
     evidenceSpec: p.evidenceSpec,
     metadata: p.metadata,
@@ -57,6 +61,8 @@ indexer.onEvent({ contract: "Tipoff", event: "TipCommitted" }, async ({ event, c
     programId: `${p.programId}`,
     scout: scoutAddress,
     commitment: p.commitment,
+    stake: p.stake,
+    stakeReturned: false,
     committedAt: BigInt(event.block.timestamp),
     sponsorEnvelope: p.sponsorEnvelope,
     scoutEnvelope: p.scoutEnvelope,
@@ -65,7 +71,7 @@ indexer.onEvent({ contract: "Tipoff", event: "TipCommitted" }, async ({ event, c
     txHash: event.transaction.hash,
   });
   const program = await context.Program.get(`${p.programId}`);
-  if (program) context.Program.set({ ...program, tipCount: program.tipCount + 1 });
+  if (program) context.Program.set({ ...program, tipCount: program.tipCount + 1, staked: program.staked + p.stake });
   const s = await scout(context, scoutAddress);
   context.Scout.set({ ...s, tips: s.tips + 1 });
 });
@@ -91,7 +97,8 @@ indexer.onEvent({ contract: "Tipoff", event: "CandidateActed" }, async ({ event,
   if (!program) return;
   context.Program.set({
     ...program,
-    available: program.available - p.reward,
+    // Declared hits are funded by the sponsor; only evidence hits draw on the bond.
+    available: source === "evidence" ? program.available - p.reward : program.available,
     openHits: program.openHits + (p.reward > 0n ? 1 : 0),
   });
   const s = await sponsor(context, program.sponsor);
@@ -131,9 +138,19 @@ indexer.onEvent({ contract: "Tipoff", event: "HitSettled" }, async ({ event, con
 
   const program = await context.Program.get(`${p.programId}`);
   if (!program) return;
-  context.Program.set({ ...program, openHits: program.openHits - 1, available: program.available + p.returned });
+  // Unclaimed evidence rewards return to the bond; unclaimed declared rewards go back to the sponsor.
+  const toBond = hit?.source === "evidence" ? p.returned : 0n;
+  context.Program.set({ ...program, openHits: program.openHits - 1, available: program.available + toBond });
   const s = await sponsor(context, program.sponsor);
   context.Sponsor.set({ ...s, paidToScouts: s.paidToScouts + paid });
+});
+
+indexer.onEvent({ contract: "Tipoff", event: "StakeReturned" }, async ({ event, context }) => {
+  const p = event.params;
+  const tip = await context.Tip.get(`${p.tipId}`);
+  if (tip) context.Tip.set({ ...tip, stakeReturned: true });
+  const program = await context.Program.get(`${p.programId}`);
+  if (program) context.Program.set({ ...program, staked: program.staked - p.amount });
 });
 
 indexer.onEvent({ contract: "Tipoff", event: "RemainderWithdrawn" }, async ({ event, context }) => {

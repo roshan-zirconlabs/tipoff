@@ -11,8 +11,13 @@ export const config = {
   startBlock: BigInt(process.env.NEXT_PUBLIC_START_BLOCK ?? 0),
   feeBps: Number(process.env.NEXT_PUBLIC_FEE_BPS ?? 50),
   devTools: process.env.NEXT_PUBLIC_DEV_TOOLS === "1",
+  /** The payout token is TestUSDC, with a public faucet (testnet only). */
+  faucet: process.env.NEXT_PUBLIC_FAUCET === "1",
   demoSponsorSeed: process.env.NEXT_PUBLIC_DEMO_SPONSOR_SEED ?? null,
 } as const;
+
+/** What the payout token is called in the UI: real USDC, or worthless test dollars on testnet. */
+export const tokenLabel = config.faucet || config.devTools ? "test USD" : "USDC";
 
 export const localMonad = defineChain({
   id: 31337,

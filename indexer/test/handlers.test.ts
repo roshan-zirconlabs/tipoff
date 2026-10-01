@@ -30,6 +30,9 @@ describe("Tipoff indexer", () => {
                 claimWindow: 604_800n,
                 topK: 3n,
                 maxTipsPerScout: 3n,
+                baseWeight: 100_000_000n,
+                minStake: 0n,
+                curveDepth: 100_000_000n,
                 sealKey: `0x${"11".repeat(32)}`,
                 evidenceSpec: "0x7b7d",
                 metadata: '{"title":"Founders"}',
@@ -44,6 +47,7 @@ describe("Tipoff indexer", () => {
                 tipId: 1n,
                 scout: SCOUT_A,
                 commitment: B32,
+                stake: 5_000_000n,
                 sponsorEnvelope: "0x01",
                 scoutEnvelope: "0x02",
               },
@@ -57,9 +61,16 @@ describe("Tipoff indexer", () => {
                 tipId: 2n,
                 scout: SCOUT_B,
                 commitment: B32,
+                stake: 0n,
                 sponsorEnvelope: "0x03",
                 scoutEnvelope: "0x04",
               },
+            },
+            {
+              contract: "Tipoff",
+              event: "StakeReturned",
+              block: { timestamp: 2_100 },
+              params: { programId: 1n, tipId: 1n, scout: SCOUT_A, amount: 5_000_000n },
             },
             {
               contract: "Tipoff",
@@ -103,13 +114,20 @@ describe("Tipoff indexer", () => {
     expect(program.available).toBe(2_000_000_000n);
     expect(program.openHits).toBe(0);
     expect(program.createdAt).toBe(1_000n);
+    expect(program.curveDepth).toBe(100_000_000n);
+    expect(program.staked).toBe(0n); // 5 USDC staked, then returned after tipping closed
 
     const hit = await indexer.Hit.getOrThrow(`1:${CANDIDATE}`);
     expect(hit.source).toBe("evidence");
     expect(hit.settled).toBe(true);
     expect(hit.fee).toBe(5_000_000n);
 
-    expect(await indexer.Tip.getOrThrow("1")).toMatchObject({ proven: true, provenFor: `1:${CANDIDATE}` });
+    expect(await indexer.Tip.getOrThrow("1")).toMatchObject({
+      proven: true,
+      provenFor: `1:${CANDIDATE}`,
+      stake: 5_000_000n,
+      stakeReturned: true,
+    });
     expect((await indexer.Tip.getOrThrow("2")).proven).toBe(false);
 
     const a = await indexer.Scout.getOrThrow(SCOUT_A.toLowerCase());

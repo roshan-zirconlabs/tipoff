@@ -10,14 +10,20 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IReceiver} from "./interfaces/IReceiver.sol";
 
 /// @title Tipoff — sealed scout markets with enforceable finder's fees.
-/// @notice A sponsor locks a bounty for a kind of opportunity. Scouts commit sealed tips. When the sponsor acts on a
-///         candidate — declared by the sponsor, or proven by evidence delivered through Chainlink CRE — the earliest
-///         scouts who tipped that candidate are paid. The bounty stays locked through a tail period, so acting after
-///         the window, or without resolving, still pays.
-/// @dev Losing tips are never revealed: a tip is opened only when it wins, by proving its commitment preimage.
+/// @notice A sponsor locks a bounty for a kind of opportunity. Scouts commit sealed tips, optionally backed by a
+///         refundable stake. When the sponsor acts on a candidate — declared by the sponsor, or proven by evidence
+///         delivered through Chainlink CRE — the scouts who tipped it are paid by conviction and timing. The bounty
+///         stays locked through a tail period, so acting after the window, or without resolving, still pays.
+/// @dev Sealed bonding curve: the chain sees each tip's stake but never its candidate, so no price can exist while
+///      tipping is open — except for the sponsor, who can decrypt every tip and so sees each candidate's implied price
+///      privately. At settlement the curve is replayed over the proven tips in commit order: tip i with weight
+///      w = baseWeight + stake buys depth²·w / ((depth + S)(depth + S + w)) shares, where S is the weight committed
+///      to that candidate before it. Earlier and bigger conviction buys cheaper shares. Stakes are always refunded,
+///      so nobody can lose money. Losing tips are never revealed.
 contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IReceiver {
     using SafeERC20 for IERC20;
 
@@ -31,6 +37,13 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
     uint256 public constant MAX_SPEC_BYTES = 2048;
     uint256 public constant MAX_METADATA_BYTES = 4096;
 
+    /// @notice A tip must predate the action by this much. The action's transaction names the candidate while it is
+    ///         pending, so without a margin a mempool watcher could tip it in an earlier block and still be paid.
+    uint64 public constant MIN_TIP_AGE = 60;
+    /// @notice Once programs exist, a new resolver only takes effect after this delay, so scouts and sponsors can see
+    ///         who will deliver evidence before it can act. Disabling evidence is immediate.
+    uint64 public constant RESOLVER_DELAY = 2 days;
+
     uint8 public constant SOURCE_SPONSOR = 1;
     uint8 public constant SOURCE_EVIDENCE = 2;
 
@@ -40,8 +53,10 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         keccak256("Resolve(uint256 programId,bytes32 candidateId,uint256 nonce,uint256 deadline)");
     bytes32 public constant WITHDRAW_TYPEHASH =
         keccak256("WithdrawRemainder(uint256 programId,uint256 nonce,uint256 deadline)");
+    bytes32 public constant WITHDRAW_OWED_TYPEHASH =
+        keccak256("WithdrawOwed(address token,uint256 nonce,uint256 deadline)");
     bytes32 public constant COMMIT_TIP_TYPEHASH = keccak256(
-        "CommitTip(uint256 programId,bytes32 commitment,bytes32 envelopesHash,uint256 nonce,uint256 deadline)"
+        "CommitTip(uint256 programId,bytes32 commitment,uint256 stake,bytes32 envelopesHash,uint256 nonce,uint256 deadline)"
     );
 
     uint256 public immutable feeBps;
@@ -58,9 +73,20 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint32 claimWindow;
         uint8 topK;
         uint16 maxTipsPerScout;
+        uint128 baseWeight; // weight every tip carries before its stake — free tips still count
+        uint128 minStake; // smallest stake a tip must carry (0 = staking optional)
+        uint128 curveDepth; // curve depth L: how fast shares get dearer as weight piles onto a candidate
         bytes32 sealKey; // sponsor X25519 public key; tips are encrypted to it
         bytes evidenceSpec; // JSON: how the evidence resolver recognises the sponsor acting
         string metadata; // JSON: title, brief, what counts as a candidate
+    }
+
+    struct TipInput {
+        uint256 programId;
+        bytes32 commitment;
+        uint128 stake;
+        bytes sponsorEnvelope;
+        bytes scoutEnvelope;
     }
 
     struct PermitSig {
@@ -68,6 +94,13 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint8 v;
         bytes32 r;
         bytes32 s;
+    }
+
+    struct PendingResolver {
+        address forwarder;
+        bytes32 workflowId;
+        address workflowOwner;
+        uint64 eta;
     }
 
     struct Program {
@@ -85,6 +118,10 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint8 topK;
         uint16 maxTipsPerScout;
         uint32 openHits;
+        uint128 baseWeight;
+        uint128 minStake;
+        uint128 curveDepth;
+        uint128 staked; // stakes held for this program, not yet returned
     }
 
     struct Tip {
@@ -92,6 +129,8 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint64 committedAt;
         uint32 programId;
         bytes32 commitment;
+        uint128 stake;
+        bool stakeReturned;
     }
 
     struct Hit {
@@ -119,6 +158,12 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
     address public forwarder;
     bytes32 public expectedWorkflowId;
     address public expectedWorkflowOwner;
+    PendingResolver public pendingResolver;
+
+    /// @notice Payouts whose transfer failed (e.g. a blocklisted recipient), held for the recipient to pull later so
+    ///         one bad recipient can never block a settlement.
+    mapping(address token => mapping(address account => uint256)) public owed;
+    mapping(address token => uint256) public totalOwed;
 
     // ─── Events ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -133,6 +178,9 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint32 claimWindow,
         uint8 topK,
         uint16 maxTipsPerScout,
+        uint128 baseWeight,
+        uint128 minStake,
+        uint128 curveDepth,
         bytes32 sealKey,
         bytes evidenceSpec,
         string metadata
@@ -142,9 +190,11 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint256 indexed tipId,
         address indexed scout,
         bytes32 commitment,
+        uint128 stake,
         bytes sponsorEnvelope,
         bytes scoutEnvelope
     );
+    event StakeReturned(uint256 indexed programId, uint256 indexed tipId, address indexed scout, uint128 amount);
     event CandidateActed(
         uint256 indexed programId,
         bytes32 indexed candidateId,
@@ -166,7 +216,10 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
     );
     event RemainderWithdrawn(uint256 indexed programId, address indexed sponsor, uint256 amount);
     event TokenAllowed(address indexed token, bool allowed);
-    event ResolverConfigured(address forwarder, bytes32 workflowId, address workflowOwner);
+    event ResolverConfigured(address indexed forwarder, bytes32 workflowId, address indexed workflowOwner);
+    event ResolverProposed(address indexed forwarder, bytes32 workflowId, address indexed workflowOwner, uint64 eta);
+    event PaymentDeferred(address indexed token, address indexed account, uint256 amount);
+    event OwedWithdrawn(address indexed token, address indexed account, uint256 amount);
 
     // ─── Errors ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -197,6 +250,11 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
     error NotInTopK();
     error TailNotOver();
     error HitsOpen();
+    error StakeTooLow();
+    error StakeLocked();
+    error NothingToReturn();
+    error NothingPending();
+    error TooEarly();
 
     // ─── Construction & admin ────────────────────────────────────────────────────────────────────────────────────
 
@@ -214,10 +272,36 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         emit TokenAllowed(token, allowed);
     }
 
-    /// @notice Configure the CRE forwarder and, optionally, the only workflow allowed to deliver evidence.
-    ///         A zero forwarder disables evidence resolution; zero workflow fields skip that check.
-    // forge-lint: disable-next-line(missing-zero-check)
+    /// @notice Configure the CRE forwarder and the only workflow (id and owner) allowed to deliver evidence through it.
+    ///         Both workflow fields are required: the production forwarder delivers any workflow's report to whatever
+    ///         receiver it names. A zero forwarder disables evidence resolution, immediately. Any other change takes
+    ///         effect at once only before the first program exists; after that it waits RESOLVER_DELAY and is applied
+    ///         with `applyResolverConfig`.
     function setResolverConfig(address forwarder_, bytes32 workflowId, address workflowOwner) external onlyOwner {
+        if (forwarder_ != address(0) && (workflowId == bytes32(0) || workflowOwner == address(0))) {
+            revert InvalidParams();
+        }
+        if (programCount == 0 || forwarder_ == address(0)) {
+            delete pendingResolver;
+            _applyResolver(forwarder_, workflowId, workflowOwner);
+            return;
+        }
+        uint64 eta = _now() + RESOLVER_DELAY;
+        pendingResolver =
+            PendingResolver({forwarder: forwarder_, workflowId: workflowId, workflowOwner: workflowOwner, eta: eta});
+        emit ResolverProposed(forwarder_, workflowId, workflowOwner, eta);
+    }
+
+    /// @notice Apply a proposed resolver once its delay has passed. Permissionless.
+    function applyResolverConfig() external {
+        PendingResolver memory r = pendingResolver;
+        if (r.eta == 0) revert NothingPending();
+        if (block.timestamp < r.eta) revert TooEarly();
+        delete pendingResolver;
+        _applyResolver(r.forwarder, r.workflowId, r.workflowOwner);
+    }
+
+    function _applyResolver(address forwarder_, bytes32 workflowId, address workflowOwner) internal {
         forwarder = forwarder_;
         expectedWorkflowId = workflowId;
         expectedWorkflowOwner = workflowOwner;
@@ -261,7 +345,7 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
                 || p.topK > MAX_TOP_K || p.maxTipsPerScout == 0 || p.sealKey == bytes32(0)
                 || p.tipDeadline <= block.timestamp || p.tailEnd < p.tipDeadline + MIN_TAIL
                 || p.claimWindow < MIN_CLAIM_WINDOW || p.evidenceSpec.length > MAX_SPEC_BYTES
-                || bytes(p.metadata).length > MAX_METADATA_BYTES
+                || bytes(p.metadata).length > MAX_METADATA_BYTES || p.baseWeight == 0 || p.curveDepth == 0
         ) revert InvalidParams();
 
         programId = ++programCount;
@@ -280,7 +364,11 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
             createdAt: _now(),
             topK: p.topK,
             maxTipsPerScout: p.maxTipsPerScout,
-            openHits: 0
+            openHits: 0,
+            baseWeight: p.baseWeight,
+            minStake: p.minStake,
+            curveDepth: p.curveDepth,
+            staked: 0
         });
 
         // Only the token's permit may run before this (try/catch, result ignored); no state depends on it.
@@ -296,6 +384,9 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
             p.claimWindow,
             p.topK,
             p.maxTipsPerScout,
+            p.baseWeight,
+            p.minStake,
+            p.curveDepth,
             p.sealKey,
             p.evidenceSpec,
             p.metadata
@@ -308,35 +399,30 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
 
     // ─── Scout: commit ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// @notice Commit a sealed tip directly (scout pays gas). Always available, so the relayer cannot censor.
-    function commitTip(
-        uint256 programId,
-        bytes32 commitment,
-        bytes calldata sponsorEnvelope,
-        bytes calldata scoutEnvelope
-    ) external returns (uint256 tipId) {
-        tipId = _commit(msg.sender, programId, commitment, sponsorEnvelope, scoutEnvelope);
+    /// @notice Commit a sealed tip directly (scout pays gas and approves any stake). Always available, so the relayer
+    ///         cannot censor.
+    function commitTip(TipInput calldata tip) external nonReentrant returns (uint256 tipId) {
+        tipId = _commit(msg.sender, tip);
     }
 
-    /// @notice Commit a sealed tip from the scout's signed intent (relayer pays gas). The signature covers both
-    ///         envelopes, so the relayer cannot swap ciphertexts.
+    /// @notice Commit a sealed tip from the scout's signed intent (relayer pays gas). The signature covers the stake
+    ///         and both envelopes, so the relayer cannot change either; an EIP-2612 permit funds the stake.
     function commitTipFor(
         address scout,
-        uint256 programId,
-        bytes32 commitment,
-        bytes calldata sponsorEnvelope,
-        bytes calldata scoutEnvelope,
+        TipInput calldata tip,
         uint256 deadline,
-        bytes calldata sig
-    ) external returns (uint256 tipId) {
+        bytes calldata sig,
+        PermitSig calldata permit
+    ) external nonReentrant returns (uint256 tipId) {
         _verify(
             scout,
             keccak256(
                 abi.encode(
                     COMMIT_TIP_TYPEHASH,
-                    programId,
-                    commitment,
-                    envelopesHash(sponsorEnvelope, scoutEnvelope),
+                    tip.programId,
+                    tip.commitment,
+                    tip.stake,
+                    envelopesHash(tip.sponsorEnvelope, tip.scoutEnvelope),
                     _useNonce(scout),
                     deadline
                 )
@@ -344,28 +430,31 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
             deadline,
             sig
         );
-        tipId = _commit(scout, programId, commitment, sponsorEnvelope, scoutEnvelope);
+        if (tip.stake != 0 && permit.deadline != 0) {
+            // A front-run permit leaves the allowance in place; the transfer in _commit is the real check.
+            try IERC20Permit(_program(tip.programId).token)
+                .permit(scout, address(this), tip.stake, permit.deadline, permit.v, permit.r, permit.s) {}
+                catch {}
+        }
+        tipId = _commit(scout, tip);
     }
 
-    function _commit(
-        address scout,
-        uint256 programId,
-        bytes32 commitment,
-        bytes calldata sponsorEnvelope,
-        bytes calldata scoutEnvelope
-    ) internal returns (uint256 tipId) {
+    function _commit(address scout, TipInput calldata tip) internal returns (uint256 tipId) {
+        uint256 programId = tip.programId;
         Program storage p = _program(programId);
         if (block.timestamp > p.tipDeadline) revert TippingClosed();
         if (scout == p.sponsor) revert SponsorCannotTip();
         if (
-            commitment == bytes32(0) || sponsorEnvelope.length == 0 || sponsorEnvelope.length > MAX_ENVELOPE_BYTES
-                || scoutEnvelope.length > MAX_ENVELOPE_BYTES
+            tip.commitment == bytes32(0) || tip.sponsorEnvelope.length == 0
+                || tip.sponsorEnvelope.length > MAX_ENVELOPE_BYTES || tip.scoutEnvelope.length > MAX_ENVELOPE_BYTES
         ) revert InvalidParams();
+        if (tip.stake < p.minStake) revert StakeTooLow();
         uint16 used = tipsByScout[programId][scout];
         if (used >= p.maxTipsPerScout) revert TipLimitReached();
 
         tipsByScout[programId][scout] = used + 1;
         p.tipCount += 1;
+        p.staked += tip.stake;
         tipId = ++tipCount;
         if (tipId > type(uint32).max) revert InvalidParams();
         _tips[tipId] = Tip({
@@ -374,32 +463,70 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
             // Bounded above: programId <= type(uint32).max.
             // forge-lint: disable-next-line(unsafe-typecast)
             programId: uint32(programId),
-            commitment: commitment
+            commitment: tip.commitment,
+            stake: tip.stake,
+            stakeReturned: false
         });
 
-        // Only an ERC-1271 staticcall (signature check) may run before this.
-        // forge-lint: disable-next-line(reentrancy-events)
-        emit TipCommitted(programId, tipId, scout, commitment, sponsorEnvelope, scoutEnvelope);
+        // Only the token's permit or an ERC-1271 staticcall can precede this; the stake transfer comes after.
+        // forge-lint: disable-next-item(reentrancy-events)
+        emit TipCommitted(programId, tipId, scout, tip.commitment, tip.stake, tip.sponsorEnvelope, tip.scoutEnvelope);
+
+        if (tip.stake != 0) {
+            // `scout` is msg.sender or the verified signer of a CommitTip intent that names this stake.
+            // forge-lint: disable-next-line(arbitrary-send-erc20)
+            IERC20(p.token).safeTransferFrom(scout, address(this), tip.stake);
+        }
+    }
+
+    /// @notice Return a tip's stake once tipping has closed — win or lose. Permissionless; funds go to the scout.
+    ///         Returning a stake never changes a payout: shares use the stake recorded at commit time.
+    function returnStake(uint256 tipId) external nonReentrant {
+        Tip storage t = _tips[tipId];
+        if (t.scout == address(0)) revert TipNotFound();
+        if (t.stake == 0 || t.stakeReturned) revert NothingToReturn();
+        Program storage p = _programs[t.programId];
+        if (block.timestamp <= p.tipDeadline) revert StakeLocked();
+
+        t.stakeReturned = true;
+        p.staked -= t.stake;
+        emit StakeReturned(t.programId, tipId, t.scout, t.stake);
+        IERC20(p.token).safeTransfer(t.scout, t.stake);
     }
 
     // ─── Resolution ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// @notice The honest path: the sponsor declares it acts on a candidate now. The sponsor cannot backdate — every
-    ///         tip committed before this block counts. Resolving a candidate before anyone tips it is how a sponsor
-    ///         publicly excludes a candidate it already knew about.
-    function resolve(uint256 programId, bytes32 candidateId) external {
+    /// @notice The honest path: the sponsor declares it acts on a candidate now and pays the hit's reward from its
+    ///         wallet. The locked bounty is a bond only evidence can spend, so declaring sham hits (say, on candidates a
+    ///         sponsor's own sybil tipped) can never drain what backs the backdoor-deal guarantee. The sponsor cannot
+    ///         backdate — every tip committed before this block counts. An unclaimed declared hit is refunded to the
+    ///         sponsor at settlement, which is also how a sponsor publicly excludes a candidate it already knew.
+    function resolve(uint256 programId, bytes32 candidateId) external nonReentrant {
         _resolve(msg.sender, programId, candidateId);
     }
 
-    /// @notice `resolve` from the sponsor's signed intent (relayer pays gas).
-    function resolveFor(uint256 programId, bytes32 candidateId, uint256 deadline, bytes calldata sig) external {
-        address sponsor = _program(programId).sponsor;
+    /// @notice `resolve` from the sponsor's signed intent (relayer pays gas); an EIP-2612 permit funds the reward.
+    function resolveFor(
+        uint256 programId,
+        bytes32 candidateId,
+        uint256 deadline,
+        bytes calldata sig,
+        PermitSig calldata permit
+    ) external nonReentrant {
+        Program storage p = _program(programId);
+        address sponsor = p.sponsor;
         _verify(
             sponsor,
             keccak256(abi.encode(RESOLVE_TYPEHASH, programId, candidateId, _useNonce(sponsor), deadline)),
             deadline,
             sig
         );
+        if (permit.deadline != 0) {
+            // A front-run permit leaves the allowance in place; the transfer in _resolve is the real check.
+            try IERC20Permit(p.token)
+                .permit(sponsor, address(this), p.rewardPerHit, permit.deadline, permit.v, permit.r, permit.s) {}
+                catch {}
+        }
         _resolve(sponsor, programId, candidateId);
     }
 
@@ -408,6 +535,9 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         if (caller != p.sponsor) revert NotSponsor();
         if (_hits[programId][candidateId].actedAt != 0) revert AlreadyActed();
         _recordHit(programId, p, candidateId, _now(), SOURCE_SPONSOR, bytes32(0));
+        // `caller` is the sponsor: msg.sender or the verified signer of a Resolve intent.
+        // forge-lint: disable-next-line(arbitrary-send-erc20)
+        IERC20(p.token).safeTransferFrom(caller, address(this), p.rewardPerHit);
     }
 
     /// @notice The enforcement path: a Chainlink CRE workflow reports that evidence shows the sponsor acted.
@@ -418,10 +548,7 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         if (metadata.length < 62) revert UnexpectedWorkflow();
         bytes32 workflowId = bytes32(metadata[0:32]);
         address workflowOwner = address(bytes20(metadata[42:62]));
-        if (expectedWorkflowId != bytes32(0) && workflowId != expectedWorkflowId) revert UnexpectedWorkflow();
-        if (expectedWorkflowOwner != address(0) && workflowOwner != expectedWorkflowOwner) {
-            revert UnexpectedWorkflow();
-        }
+        if (workflowId != expectedWorkflowId || workflowOwner != expectedWorkflowOwner) revert UnexpectedWorkflow();
 
         (uint256 programId, bytes32 candidateId, uint64 actedAt, bytes32 evidenceRef) =
             abi.decode(report, (uint256, bytes32, uint64, bytes32));
@@ -443,8 +570,13 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         // Evidence for an action inside the tail may arrive a little later; one claim window of grace.
         if (block.timestamp > uint256(p.tailEnd) + p.claimWindow) revert ResolutionClosed();
 
-        uint128 reward = p.available < p.rewardPerHit ? p.available : p.rewardPerHit;
-        p.available -= reward;
+        uint128 reward;
+        if (source == SOURCE_SPONSOR) {
+            reward = p.rewardPerHit; // funded by the sponsor in _resolve, never from the bond
+        } else {
+            reward = p.available < p.rewardPerHit ? p.available : p.rewardPerHit;
+            p.available -= reward;
+        }
         uint64 claimFrom = block.timestamp > p.tipDeadline ? _now() : p.tipDeadline;
         uint64 claimDeadline = claimFrom + p.claimWindow;
 
@@ -478,7 +610,7 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         if (block.timestamp > h.claimDeadline) revert ClaimClosed();
         if (tipProven[tipId]) revert AlreadyProven();
         if (commitmentOf(programId, t.scout, candidateId, salt) != t.commitment) revert InvalidProof();
-        if (t.committedAt >= h.actedAt) revert TipAfterAction();
+        if (uint256(t.committedAt) + MIN_TIP_AGE > h.actedAt) revert TipAfterAction();
 
         uint8 k = _programs[programId].topK;
         uint8 n = h.proven;
@@ -520,26 +652,73 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         uint256[] memory amounts = new uint256[](n);
 
         if (n == 0) {
-            p.available += reward;
             emit HitSettled(programId, candidateId, tipIds, scouts, amounts, 0, reward);
+            // Unclaimed: a declared hit's reward goes back to the sponsor who paid it; an evidence hit's to the bond.
+            if (h.source == SOURCE_SPONSOR) _pay(IERC20(p.token), p.sponsor, reward);
+            else p.available += reward;
             return;
         }
 
         uint256 fee = (reward * feeBps) / 10_000;
-        uint256[] memory split = payoutSplit(reward - fee, n);
+        uint256[] memory weights = new uint256[](n);
         for (uint256 i = 0; i < n; ++i) {
             tipIds[i] = h.topTipIds[i];
-            scouts[i] = _tips[tipIds[i]].scout;
+            Tip storage t = _tips[tipIds[i]];
+            scouts[i] = t.scout;
+            weights[i] = uint256(p.baseWeight) + t.stake;
+        }
+        uint256[] memory split = splitByShares(reward - fee, curveShares(p.curveDepth, weights));
+        for (uint256 i = 0; i < n; ++i) {
             amounts[i] = split[i];
         }
 
+        // Every transfer comes after this event; the guard blocks re-entry.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit HitSettled(programId, candidateId, tipIds, scouts, amounts, fee, 0);
 
         IERC20 token = IERC20(p.token);
-        if (fee != 0) token.safeTransfer(feeRecipient, fee);
+        if (fee != 0) _pay(token, feeRecipient, fee);
         for (uint256 i = 0; i < n; ++i) {
-            token.safeTransfer(scouts[i], amounts[i]);
+            _pay(token, scouts[i], amounts[i]);
         }
+    }
+
+    /// @notice Pull a payout that couldn't be pushed. Pays only the account it's owed to — never redirected, so a
+    ///         token's blocklist still applies.
+    function withdrawOwed(address token) external nonReentrant {
+        _withdrawOwed(token, msg.sender);
+    }
+
+    /// @notice `withdrawOwed` from the account's signed intent (relayer pays gas). Funds go to the signer only.
+    function withdrawOwedFor(address token, address account, uint256 deadline, bytes calldata sig)
+        external
+        nonReentrant
+    {
+        _verify(
+            account, keccak256(abi.encode(WITHDRAW_OWED_TYPEHASH, token, _useNonce(account), deadline)), deadline, sig
+        );
+        _withdrawOwed(token, account);
+    }
+
+    function _withdrawOwed(address token, address account) internal {
+        uint256 amount = owed[token][account];
+        if (amount == 0) revert NothingToReturn();
+        owed[token][account] = 0;
+        totalOwed[token] -= amount;
+        // Only an ERC-1271 staticcall (relayed signature check) can precede this; the transfer comes after.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit OwedWithdrawn(token, account, amount);
+        IERC20(token).safeTransfer(account, amount);
+    }
+
+    /// @dev Push a payout; if the token refuses it (blocklist, paused), hold it for `withdrawOwed` instead of reverting.
+    function _pay(IERC20 token, address to, uint256 amount) internal {
+        if (amount == 0 || token.trySafeTransfer(to, amount)) return;
+        owed[address(token)][to] += amount;
+        totalOwed[address(token)] += amount;
+        // Records that the transfer just attempted failed; callers are nonReentrant.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit PaymentDeferred(address(token), to, amount);
     }
 
     /// @notice Return the unallocated bounty to the sponsor once the tail and its grace period are over.
@@ -610,6 +789,9 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
                 p.claimWindow,
                 p.topK,
                 p.maxTipsPerScout,
+                p.baseWeight,
+                p.minStake,
+                p.curveDepth,
                 p.sealKey,
                 keccak256(p.evidenceSpec),
                 keccak256(bytes(p.metadata))
@@ -617,16 +799,33 @@ contract Tipoff is EIP712, Nonces, ReentrancyGuardTransient, Ownable2Step, IRece
         );
     }
 
-    /// @notice Geometric split over the ranks actually proven: rank i gets 2^(n-1-i) / (2^n - 1), rounded down; the
-    ///         earliest scout takes the rounding dust, so earlier ranks never earn less. n = 3 → 4/7, 2/7, 1/7.
-    ///         A lone finder gets everything.
-    function payoutSplit(uint256 net, uint256 n) public pure returns (uint256[] memory amounts) {
+    /// @notice The sealed bonding curve, replayed in commit order over a candidate's proven tips. Tip i with weight
+    ///         w buys depth²·w / ((depth + S)(depth + S + w)) shares, S being the weight committed before it: the
+    ///         integral of a price (1 + x/depth)² that rises as weight piles onto the candidate. Integer-only;
+    ///         mulDiv keeps intermediates in range.
+    function curveShares(uint256 depth, uint256[] memory weights) public pure returns (uint256[] memory shares) {
+        shares = new uint256[](weights.length);
+        uint256 before = 0;
+        for (uint256 i = 0; i < weights.length; ++i) {
+            uint256 w = weights[i];
+            shares[i] = Math.mulDiv(Math.mulDiv(depth, w, depth + before), depth, depth + before + w);
+            before += w;
+        }
+    }
+
+    /// @notice Split `net` in proportion to shares, rounding down; the earliest proven tip takes the dust. If every
+    ///         share rounds to zero (a degenerate curve), split equally.
+    function splitByShares(uint256 net, uint256[] memory shares) public pure returns (uint256[] memory amounts) {
+        uint256 n = shares.length;
         amounts = new uint256[](n);
         if (n == 0) return amounts;
-        uint256 denominator = (1 << n) - 1;
+        uint256 total = 0;
+        for (uint256 i = 0; i < n; ++i) {
+            total += shares[i];
+        }
         uint256 paid = 0;
         for (uint256 i = 1; i < n; ++i) {
-            amounts[i] = (net * (1 << (n - 1 - i))) / denominator;
+            amounts[i] = total == 0 ? net / n : Math.mulDiv(net, shares[i], total);
             paid += amounts[i];
         }
         amounts[0] = net - paid;

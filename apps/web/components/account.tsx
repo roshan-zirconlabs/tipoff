@@ -3,8 +3,10 @@
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { canGetTestDollars } from "@/lib/client/actions";
 import { useSession } from "@/lib/client/session";
 import { shortAddress } from "@/lib/format";
+import { FaucetButton } from "./faucet-button";
 import { Fingerprint } from "./icons";
 import { useSignIn } from "./sign-in";
 import { Button, Skeleton } from "./ui";
@@ -68,7 +70,7 @@ export function AccountButton() {
         className="flex h-9 items-center gap-2 rounded-full border border-rule bg-card pl-1 pr-3 text-sm font-semibold transition hover:border-rule-strong"
       >
         <AddressMark address={profile.address} />
-        <span className="max-w-[8rem] truncate">{profile.name}</span>
+        <span className="max-w-[5.5rem] truncate sm:max-w-[8rem]">{profile.name}</span>
         {profile.mode === "dev" ? <span className="font-mono text-[0.6rem] uppercase text-signal-ink">dev</span> : null}
       </button>
       <AnimatePresence>
@@ -108,6 +110,13 @@ export function AccountButton() {
                 {item.label}
               </Link>
             ))}
+            {canGetTestDollars ? (
+              <FaucetButton
+                address={profile.address}
+                onDone={() => setMenu(false)}
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm text-signal-ink transition hover:bg-paper-2"
+              />
+            ) : null}
             <div className="my-1 h-px bg-rule" />
             <button
               type="button"

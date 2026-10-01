@@ -17,3 +17,4 @@ packages/core/src/deployments/local.json
 .tipoff/
 contracts/deployments/31337.json
 contracts/broadcast/**/dry-run/
+.cre_build_tmp.js

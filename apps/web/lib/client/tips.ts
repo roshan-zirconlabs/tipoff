@@ -1,6 +1,6 @@
 "use client";
 
-import { openTip, type TipPlaintext } from "@tipoff/core";
+import { MIN_TIP_AGE, openTip, type TipPlaintext } from "@tipoff/core";
 import { useMemo } from "react";
 import type { Address, Hex } from "viem";
 import { config } from "../config";
@@ -51,7 +51,7 @@ export function tipStatus(tip: OpenedTipView, program: ProgramView | undefined, 
   if (!hit || !program) return { kind: "sealed" };
   const payout = hit.payouts.find((p) => p.tipId === tip.tipId);
   if (payout) return { kind: "paid", hit, amount: payout.amount };
-  if (tip.committedAt >= hit.actedAt) return { kind: "too-late", hit };
+  if (tip.committedAt + MIN_TIP_AGE > hit.actedAt) return { kind: "too-late", hit };
   if (hit.settled) return tip.proven ? { kind: "outranked", hit } : { kind: "missed", hit };
   if (tip.proven) return { kind: "claimed", hit };
   if (now > hit.claimDeadline) return { kind: "missed", hit };

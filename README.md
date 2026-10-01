@@ -27,12 +27,13 @@ Passkeys work on `localhost` in Chrome and Safari; a throwaway dev key is availa
 
 ## Monad testnet
 
-Tipoff is deployed at [`0x196d4119944CD005AD917466B8e2e2Ec018FA547`](https://testnet.monadvision.com/address/0x196d4119944CD005AD917466B8e2e2Ec018FA547)
+Tipoff is deployed at [`0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707`](https://testnet.monadvision.com/address/0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707)
 (chain 10143, source verified) with Circle's testnet USDC.
 
 ```bash
 npx pnpm@12.6.0 dev:testnet     # app + keeper against testnet; needs apps/web/.env.testnet (RELAYER_PRIVATE_KEY)
-npx pnpm@12.6.0 smoke:testnet   # full relayed lifecycle on testnet; needs ~12 USDC on the deployer (faucet.circle.com)
+npx pnpm@12.6.0 smoke:testnet   # full relayed lifecycle on testnet; needs ~1.1 USDC on the deployer (faucet.circle.com)
+npx pnpm@12.6.0 preflight:mainnet   # read-only mainnet readiness checks and the exact deploy command
 ```
 
 - **Evidence (Chainlink CRE):** `workflows/resolver`. After `cre login`, from `workflows/`:
@@ -62,4 +63,6 @@ npx biome check .                     # lint + format
 | `workflows/resolver/` | Chainlink CRE evidence workflow |
 | `scripts/dev.ts` | One-command stack: local chain, or `--network testnet` |
 | `scripts/smoke-testnet.ts` | End-to-end check on Monad testnet through the relayer |
+| `scripts/preflight-mainnet.ts` | Read-only mainnet readiness checks (no funds move) |
+| `apps/web/app/api/keeper` | Cron-triggered keeper: settles closed hits, returns unlocked stakes |
 # tipoff

@@ -12,7 +12,7 @@ export default async function ProgramsPage() {
       <p className="eyebrow">Programs</p>
       <h1 className="display mt-4 text-[clamp(2.8rem,7vw,5rem)]">Who are they looking for?</h1>
       <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-2">
-        Every program is a sponsor with money locked on Monad. Pick one you have an eye for and send a sealed tip.
+        Every program is a patron with money locked on Monad. Pick one you have an eye for and send a sealed tip.
       </p>
       <ProgramsList initial={snapshot} />
     </div>

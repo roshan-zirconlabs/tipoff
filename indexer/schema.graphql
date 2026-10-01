@@ -12,6 +12,11 @@ type Program {
   claimWindow: BigInt!
   topK: Int!
   maxTipsPerScout: Int!
+  baseWeight: BigInt!
+  minStake: BigInt!
+  curveDepth: BigInt!
+  "Stakes the contract still holds for this program."
+  staked: BigInt!
   sealKey: String!
   evidenceSpec: String!
   metadata: String!
@@ -27,6 +32,8 @@ type Tip {
   programId: String! @index
   scout: String! @index
   commitment: String!
+  stake: BigInt!
+  stakeReturned: Boolean!
   committedAt: BigInt!
   sponsorEnvelope: String!
   scoutEnvelope: String!

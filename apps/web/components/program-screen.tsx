@@ -1,6 +1,6 @@
 "use client";
 
-import { rankShares } from "@tipoff/core";
+import { payoutFor, rankShares } from "@tipoff/core";
 import Link from "next/link";
 import { useSession } from "@/lib/client/session";
 import { useChainNow, useSnapshot } from "@/lib/client/snapshot";
@@ -32,7 +32,9 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
   }
 
   const phase = phaseOf(program, now);
-  const shares = rankShares(program.topK);
+  const curve = { baseWeight: BigInt(program.baseWeight), curveDepth: BigInt(program.curveDepth) };
+  const shares = rankShares(program.topK, curve);
+  const amounts = payoutFor(BigInt(program.rewardPerHit), Array(program.topK).fill(0n), curve);
   const isSponsor = session.profile?.address.toLowerCase() === program.sponsor.toLowerCase();
   const spec = program.evidence;
 
@@ -79,12 +81,16 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
         <Stat
           label="Tips sealed"
           value={program.tipCount}
-          hint={`${program.hits.length} hit${program.hits.length === 1 ? "" : "s"} so far`}
+          hint={
+            BigInt(program.staked) > 0n
+              ? `$${usdc(program.staked)} staked behind them`
+              : `${program.hits.length} hit${program.hits.length === 1 ? "" : "s"} so far`
+          }
         />
         <Stat
           label={phase === "tipping" ? "Tipping closes" : "Tail ends"}
           value={phase === "tipping" ? duration(program.tipDeadline - now) : dateTime(program.tailEnd)}
-          hint={phase === "tipping" ? dateTime(program.tipDeadline) : "then the sponsor can withdraw"}
+          hint={phase === "tipping" ? dateTime(program.tipDeadline) : "then the patron can withdraw"}
         />
       </dl>
 
@@ -110,8 +116,8 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
             <div className="card p-6">
               <p className="font-semibold">Tipping has closed.</p>
               <p className="mt-1 text-sm text-ink-2">
-                The bounty stays locked until {dateTime(program.tailEnd)}. If the sponsor backs a tipped candidate
-                before then, the earliest scouts are paid.
+                The bounty stays locked until {dateTime(program.tailEnd)}. If the patron backs a tipped candidate before
+                then, the earliest scouts are paid.
               </p>
             </div>
           )}
@@ -130,21 +136,21 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
 
         <aside className="space-y-5">
           <section className="card p-6">
-            <p className="eyebrow">How a hit pays</p>
+            <p className="eyebrow">How a hit pays, unstaked</p>
             <ol className="mt-4 space-y-2.5">
               {shares.map((share, i) => (
-                <li key={share} className="flex items-baseline justify-between gap-4">
+                <li key={i} className="flex items-baseline justify-between gap-4">
                   <span className="text-ink-2">{["First", "Second", "Third", "Fourth", "Fifth"][i]} scout</span>
                   <span className="numeric text-ink">
-                    {Math.round(share * 100)}% · $
-                    {usdc((BigInt(program.rewardPerHit) * BigInt(Math.round(share * 10_000))) / 10_000n)}
+                    {Math.round(share * 100)}% · ${usdc(amounts[i] ?? 0n)}
                   </span>
                 </li>
               ))}
             </ol>
             <p className="mt-4 border-t border-rule pt-4 text-sm leading-relaxed text-ink-3">
-              Ranked by when the tip was sealed. {feeLabel()} Winners claim within{" "}
-              {Math.round(program.claimWindow / 86_400)} days of a hit.
+              Shares come off a curve that gets dearer as tips pile onto a candidate, so earlier tips buy more. A stake
+              buys more shares at the same spot and is refunded in full when tipping closes. {feeLabel()} Winners claim
+              within {Math.round(program.claimWindow / 86_400)} days of a hit.
             </p>
           </section>
 
@@ -155,7 +161,7 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
                 <p className="mt-3 leading-relaxed text-ink-2">
                   A payment of at least <span className="numeric text-ink">${usdc(spec.minAmount)}</span> USDC from{" "}
                   {spec.treasuries.length === 1 ? "this treasury" : "these treasuries"} to a tipped wallet, even if the
-                  sponsor never says so.
+                  patron never says so.
                 </p>
                 <ul className="mt-3 space-y-1.5">
                   {spec.treasuries.map((t) => (
@@ -166,7 +172,7 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
                 </ul>
               </>
             ) : (
-              <p className="mt-3 text-ink-2">The sponsor declares hits itself. No evidence resolver is configured.</p>
+              <p className="mt-3 text-ink-2">The patron declares hits itself. No evidence resolver is configured.</p>
             )}
           </section>
 
@@ -182,7 +188,7 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
                     <div className="flex items-center justify-between gap-3">
                       <span className="numeric text-sm text-ink">{shortHash(h.candidateId)}</span>
                       <Badge tone={h.source === "evidence" ? "signal" : "neutral"}>
-                        {h.source === "evidence" ? "Resolved by evidence" : "Declared by sponsor"}
+                        {h.source === "evidence" ? "Resolved by evidence" : "Declared by patron"}
                       </Badge>
                     </div>
                     <p className="mt-1.5 text-sm text-ink-3">
@@ -207,7 +213,7 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
               </ul>
             ) : (
               <p className="mt-3 text-sm leading-relaxed text-ink-3">
-                No hits yet. When the sponsor acts on a tipped candidate, it shows here, and so do the scouts it pays.
+                No hits yet. When the patron acts on a tipped candidate, it shows here, and so do the scouts it pays.
               </p>
             )}
           </section>

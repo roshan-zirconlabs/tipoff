@@ -9,6 +9,7 @@ const out = join(root, "contracts", "out");
 const contracts = [
   { file: "Tipoff.sol/Tipoff.json", name: "tipoffAbi" },
   { file: "MockUSDC.sol/MockUSDC.json", name: "mockUsdcAbi" },
+  { file: "TestUSDC.sol/TestUSDC.json", name: "testUsdcAbi" },
 ];
 
 const body = contracts

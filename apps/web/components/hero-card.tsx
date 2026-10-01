@@ -6,24 +6,24 @@ import { Stamp } from "./stamp";
 
 const SAMPLES = [
   {
-    program: "Founders we'll fund — Q4",
+    program: "Glasshouse DAO — artists we'll commission",
     candidate: "0x7f3a…c21e",
-    label: "Ada — payroll rails for gig workers",
-    note: "Shipped three releases in a month. 400 riders onboarded in Lagos, no ads.",
+    label: "Mira Osei — generative textiles",
+    note: "Minting 1/1s on Monad for three weeks. Every drop sells out to the same 40 collectors.",
     n: 42,
   },
   {
-    program: "Artists we'll sign",
-    candidate: "deezer · #184502",
+    program: "Low Tide Records — artists we'll sign",
+    candidate: "0x3c9e…a410",
     label: "Nala Bloom — alt-R&B, Leeds",
     note: "Two tracks, 90k plays, zero label. Crowd sings every word at 200-cap shows.",
     n: 7,
   },
   {
-    program: "Engineers we'll hire",
+    program: "Monad creators fund — round 3",
     candidate: "0x19be…04d7",
-    label: "Kenji — ZK circuits",
-    note: "Rewrote a prover in a weekend. Nobody's DM'd him yet.",
+    label: "@kenji — onchain game streams",
+    note: "Streams a fully onchain roguelike daily. Chat grew 5× since August, no ads.",
     n: 118,
   },
 ];
@@ -107,7 +107,7 @@ export function HeroCard() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
-            <p className="mt-5 text-sm text-ink-3">To the sponsor of</p>
+            <p className="mt-5 text-sm text-ink-3">To the patron of</p>
             <p className="display text-[1.65rem] leading-tight">{sample.program}</p>
 
             <dl className="mt-5 space-y-3 border-t border-dashed border-rule pt-4 text-sm">
@@ -153,7 +153,7 @@ export function HeroCard() {
               transition={{ delay: 0.25 }}
               className="numeric absolute bottom-7 left-6 max-w-[55%] text-xs leading-relaxed text-ink-2"
             >
-              Only the sponsor can read this.
+              Only the patron can read this.
               <br />
               Queue position locked on Monad.
             </motion.p>

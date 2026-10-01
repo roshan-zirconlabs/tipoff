@@ -22,6 +22,7 @@ abstract contract TipoffBase is Test {
     uint256 internal constant FEE_BPS = 50; // 0.5%
     uint128 internal constant REWARD = 700e6; // divisible by 7 for clean 4/7, 2/7, 1/7 checks
     uint128 internal constant BOUNTY = 2_100e6; // three hits
+    uint128 internal constant WEIGHT = 100e6; // base weight == curve depth: free tips split 6/9, 2/9, 1/9
     bytes32 internal constant SEAL_KEY = bytes32(uint256(0x5EA1));
     bytes32 internal constant WORKFLOW_ID = keccak256("tipoff-resolver");
     address internal workflowOwner = makeAddr("workflowOwner");
@@ -57,6 +58,9 @@ abstract contract TipoffBase is Test {
             claimWindow: 30 days,
             topK: 3,
             maxTipsPerScout: 3,
+            baseWeight: WEIGHT,
+            minStake: 0,
+            curveDepth: WEIGHT,
             sealKey: SEAL_KEY,
             evidenceSpec: bytes('{"kind":"evm-payment","treasuries":[]}'),
             metadata: '{"title":"Founders we will fund"}'
@@ -80,8 +84,38 @@ abstract contract TipoffBase is Test {
         address scout = scouts[scoutIndex];
         bytes32 c = tipoff.commitmentOf(programId, scout, candidateId, _salt(scoutIndex, candidateId));
         vm.prank(scout);
-        tipId = tipoff.commitTip(programId, c, hex"01", hex"02");
+        tipId = tipoff.commitTip(_in(programId, c, 0, hex"01", hex"02"));
     }
+
+    /// Commit a tip backed by `stake`, funding and approving the scout first.
+    function _commitStaked(uint256 scoutIndex, uint256 programId, bytes32 candidateId, uint128 stake)
+        internal
+        returns (uint256 tipId)
+    {
+        address scout = scouts[scoutIndex];
+        usdc.mint(scout, stake);
+        bytes32 c = tipoff.commitmentOf(programId, scout, candidateId, _salt(scoutIndex, candidateId));
+        vm.startPrank(scout);
+        usdc.approve(address(tipoff), stake);
+        tipId = tipoff.commitTip(_in(programId, c, stake, hex"01", hex"02"));
+        vm.stopPrank();
+    }
+
+    function _in(uint256 programId, bytes32 commitment, uint128 stake, bytes memory sponsorEnv, bytes memory scoutEnv)
+        internal
+        pure
+        returns (Tipoff.TipInput memory)
+    {
+        return Tipoff.TipInput({
+            programId: programId,
+            commitment: commitment,
+            stake: stake,
+            sponsorEnvelope: sponsorEnv,
+            scoutEnvelope: scoutEnv
+        });
+    }
+
+    function _noPermit() internal pure returns (Tipoff.PermitSig memory none) {}
 
     function _prove(uint256 scoutIndex, uint256 tipId, bytes32 candidateId) internal {
         tipoff.proveTip(tipId, candidateId, _salt(scoutIndex, candidateId));
@@ -108,16 +142,21 @@ abstract contract TipoffBase is Test {
         uint256 pk,
         uint256 programId,
         bytes32 commitment,
+        uint128 stake,
         bytes memory sponsorEnv,
         bytes memory scoutEnv,
         uint256 nonce,
         uint256 deadline
     ) internal view returns (bytes memory) {
         bytes32 envHash = keccak256(abi.encode(keccak256(sponsorEnv), keccak256(scoutEnv)));
-        return
-            _sign(
-                pk, keccak256(abi.encode(tipoff.COMMIT_TIP_TYPEHASH(), programId, commitment, envHash, nonce, deadline))
-            );
+        return _sign(
+            pk,
+            keccak256(
+                abi.encode(
+                    tipoff.COMMIT_TIP_TYPEHASH(), programId, commitment, uint256(stake), envHash, nonce, deadline
+                )
+            )
+        );
     }
 
     function _permit(uint256 pk, address spender, uint256 value, uint256 deadline)

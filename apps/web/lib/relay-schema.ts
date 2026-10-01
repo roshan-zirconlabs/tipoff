@@ -5,6 +5,8 @@ const hex = z.string().regex(/^0x[0-9a-fA-F]*$/, "hex");
 const bytes32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "bytes32");
 const address = z.string().refine((v) => isAddress(v), "address");
 const uint = z.string().regex(/^\d+$/, "uint").max(78);
+const uint128 = uint.refine((v) => BigInt(v) < 2n ** 128n, "uint128");
+const permit = z.object({ deadline: uint, v: z.number().int().min(0).max(255), r: bytes32, s: bytes32 });
 const signature = z.string().regex(/^0x[0-9a-fA-F]{130}$/, "signature");
 
 /** Every action the relayer will pay gas for. Anything else is rejected before touching the chain. */
@@ -20,6 +22,9 @@ export const relayRequest = z.discriminatedUnion("type", [
       claimWindow: z.number().int().positive(),
       topK: z.number().int().min(1).max(5),
       maxTipsPerScout: z.number().int().min(1).max(65_535),
+      baseWeight: uint128,
+      minStake: uint128,
+      curveDepth: uint128,
       sealKey: bytes32,
       evidenceSpec: hex.max(2 + 2 * 2048),
       metadata: z.string().max(4096),
@@ -27,22 +32,28 @@ export const relayRequest = z.discriminatedUnion("type", [
     sponsor: address,
     deadline: uint,
     signature,
-    permit: z.object({ deadline: uint, v: z.number().int().min(0).max(255), r: bytes32, s: bytes32 }),
+    permit,
   }),
   z.object({
     type: z.literal("commitTip"),
     scout: address,
     programId: uint,
     commitment: bytes32,
+    stake: uint128,
     sponsorEnvelope: hex.max(2 + 2 * 1024),
     scoutEnvelope: hex.max(2 + 2 * 1024),
     deadline: uint,
     signature,
+    /** Funds the stake without an approval transaction; omitted for an unstaked tip. */
+    permit: permit.optional(),
   }),
-  z.object({ type: z.literal("resolve"), programId: uint, candidateId: bytes32, deadline: uint, signature }),
+  z.object({ type: z.literal("resolve"), programId: uint, candidateId: bytes32, deadline: uint, signature, permit }),
   z.object({ type: z.literal("withdraw"), programId: uint, deadline: uint, signature }),
   z.object({ type: z.literal("proveTip"), tipId: uint, candidateId: bytes32, salt: bytes32 }),
   z.object({ type: z.literal("settle"), programId: uint, candidateId: bytes32 }),
+  z.object({ type: z.literal("returnStake"), tipId: uint }),
+  z.object({ type: z.literal("drip"), to: address }),
+  z.object({ type: z.literal("withdrawOwed"), token: address, account: address, deadline: uint, signature }),
 ]);
 
 export type RelayRequest = z.infer<typeof relayRequest>;

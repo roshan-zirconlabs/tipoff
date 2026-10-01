@@ -4,9 +4,9 @@ import { motion } from "motion/react";
 import { Stamp } from "./stamp";
 
 const STEPS = [
-  { day: "Day 2", title: "Scout seals a tip", body: "Ada, building payroll rails. Queue position #0042." },
-  { day: "Day 14", title: "Tipping closes", body: "The sponsor has read every tip. Nobody else has." },
-  { day: "Day 61", title: "Sponsor pays Ada — quietly", body: "Straight from its treasury. It never presses resolve." },
+  { day: "Day 2", title: "Scout seals a tip", body: "Mira, generative textiles. Queue position #0042." },
+  { day: "Day 14", title: "Tipping closes", body: "The patron has read every tip. Nobody else has." },
+  { day: "Day 61", title: "Patron pays Mira — quietly", body: "Straight from its treasury. It never presses resolve." },
   { day: "Day 61", title: "Evidence resolves it", body: "Chainlink CRE sees the payment and reports it on-chain." },
   {
     day: "Day 91",

@@ -14,7 +14,7 @@ import { encodeEvidenceSpec } from "@tipoff/core/program";
 import { type Address, decodeAbiParameters, type Hex, hexToBytes, keccak256, pad, toHex } from "viem";
 import { type Config, initWorkflow, onTreasuryTransfer, TRANSFER_TOPIC } from "./main";
 
-const TIPOFF: Address = "0x196d4119944CD005AD917466B8e2e2Ec018FA547";
+const TIPOFF: Address = "0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707";
 const USDC: Address = "0x534b2f3A21130d7a60830c2Df862319e593943A3";
 const TREASURY: Address = "0x02847D22C33f5F060Bd27e69F1a413AD44cab213";
 const FOUNDER: Address = "0x7f3a51c2aa0c7f4b54e2a7c9ae0e5d1b6f02c21e";
@@ -84,6 +84,10 @@ function setup({ onChainSpecHash = keccak256(spec), alreadyActed = false }: Setu
     topK: 3,
     maxTipsPerScout: 3,
     openHits: 0,
+    baseWeight: 100_000_000n,
+    minStake: 0n,
+    curveDepth: 100_000_000n,
+    staked: 0n,
   });
   tipoff.getHit = () => ({
     actedAt: alreadyActed ? 1_900n : 0n,

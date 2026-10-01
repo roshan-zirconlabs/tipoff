@@ -121,6 +121,10 @@ async function build(): Promise<Snapshot> {
           createdAt: 0,
           topK: Number(a.topK),
           maxTipsPerScout: Number(a.maxTipsPerScout),
+          baseWeight: `${a.baseWeight}`,
+          minStake: `${a.minStake}`,
+          curveDepth: `${a.curveDepth}`,
+          staked: "0",
           sealKey: a.sealKey,
           tipCount: 0,
           openHits: 0,
@@ -136,12 +140,17 @@ async function build(): Promise<Snapshot> {
       case "TipCommitted": {
         const a = log.args;
         const program = programs.get(Number(a.programId));
-        if (program) program.tipCount += 1;
+        if (program) {
+          program.tipCount += 1;
+          program.staked = `${BigInt(program.staked) + a.stake}`;
+        }
         tips.set(Number(a.tipId), {
           tipId: Number(a.tipId),
           programId: Number(a.programId),
           scout: a.scout,
           commitment: a.commitment,
+          stake: `${a.stake}`,
+          stakeReturned: false,
           committedAt: cache.timestamps.get(log.blockNumber) ?? 0,
           sponsorEnvelope: a.sponsorEnvelope,
           scoutEnvelope: a.scoutEnvelope,
@@ -155,7 +164,8 @@ async function build(): Promise<Snapshot> {
         const programId = Number(a.programId);
         const program = programs.get(programId);
         if (program) {
-          program.available = `${BigInt(program.available) - a.reward}`;
+          // Declared hits are funded by the sponsor; only evidence hits draw on the bond.
+          if (a.source === 2) program.available = `${BigInt(program.available) - a.reward}`;
           if (a.reward > 0n) program.openHits += 1;
         }
         hits.set(key(programId, a.candidateId), {
@@ -201,8 +211,17 @@ async function build(): Promise<Snapshot> {
         }
         if (program) {
           program.openHits -= 1;
-          program.available = `${BigInt(program.available) + a.returned}`;
+          // Unclaimed evidence rewards return to the bond; unclaimed declared rewards go back to the sponsor.
+          if (hit?.source === "evidence") program.available = `${BigInt(program.available) + a.returned}`;
         }
+        break;
+      }
+      case "StakeReturned": {
+        const a = log.args;
+        const tip = tips.get(Number(a.tipId));
+        if (tip) tip.stakeReturned = true;
+        const program = programs.get(Number(a.programId));
+        if (program) program.staked = `${BigInt(program.staked) - a.amount}`;
         break;
       }
       case "RemainderWithdrawn": {

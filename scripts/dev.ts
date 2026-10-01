@@ -3,6 +3,7 @@
 //   node scripts/dev.ts                    local: anvil (Monad rules) → deploy → seed demo → resolver + keeper → next dev
 //   node scripts/dev.ts --network testnet  Monad testnet: the deployed contract (contracts/deployments/10143.json) →
 //                                          keeper → next dev. Evidence comes from the Chainlink CRE workflow there.
+//   node scripts/dev.ts --network mainnet  the same against Monad mainnet (deployments/143.json, apps/web/.env.mainnet).
 //
 // Locally, the resolver stands in for the CRE workflow: it runs the same pure `matchPayments` from @tipoff/core against
 // USDC transfers and delivers reports to Tipoff.onReport as the configured forwarder. The keeper settles hits whose
@@ -27,6 +28,7 @@ import {
 import {
   type Address,
   bytesToHex,
+  concatHex,
   createPublicClient,
   createTestClient,
   createWalletClient,
@@ -35,15 +37,20 @@ import {
   erc20Abi,
   type Hex,
   http,
+  keccak256,
   type Log,
   type PublicClient,
   parseEther,
   parseEventLogs,
   parseUnits,
+  toHex,
+  zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { type Chain, foundry, monadTestnet } from "viem/chains";
+import { type Chain, foundry, monad, monadTestnet } from "viem/chains";
 
+/** The local resolver reports as this workflow, so Tipoff enforces workflow checks locally exactly as on mainnet. */
+const LOCAL_WORKFLOW_ID = keccak256(toHex("tipoff-local-resolver"));
 const root = join(import.meta.dirname, "..");
 const RPC = "http://127.0.0.1:8545";
 // Anvil's well-known development keys. Never use these anywhere but a local chain.
@@ -91,7 +98,7 @@ function demoAccount(seed: string) {
 
 const NETWORK = process.argv.includes("--network") ? process.argv[process.argv.indexOf("--network") + 1] : "local";
 
-type Deployment = { tipoff: Address; usdc: Address; startBlock: number };
+type Deployment = { tipoff: Address; usdc: Address; startBlock: number; testToken?: Address };
 
 function readEnvFile(path: string): Record<string, string> {
   try {
@@ -116,39 +123,50 @@ function startWeb() {
   log("web", "http://localhost:3000");
 }
 
-async function testnet() {
-  const TESTNET_RPC = "https://testnet-rpc.monad.xyz";
-  const dep = JSON.parse(readFileSync(join(root, "contracts", "deployments", "10143.json"), "utf8")) as Deployment;
-  const secrets = readEnvFile(join(root, "apps", "web", ".env.testnet"));
+const REMOTE = {
+  testnet: { chain: monadTestnet, rpc: "https://testnet-rpc.monad.xyz", envFile: ".env.testnet" },
+  mainnet: { chain: monad, rpc: "https://rpc.monad.xyz", envFile: ".env.mainnet" },
+} as const;
+
+async function remote(network: keyof typeof REMOTE) {
+  const { chain: remoteChain, envFile } = REMOTE[network];
+  const secrets = readEnvFile(join(root, "apps", "web", envFile));
+  const rpcUrl = secrets.RPC_URL ?? REMOTE[network].rpc;
+  const dep = JSON.parse(
+    readFileSync(join(root, "contracts", "deployments", `${remoteChain.id}.json`), "utf8"),
+  ) as Deployment;
   const relayerKey = secrets.RELAYER_PRIVATE_KEY as Hex | undefined;
-  if (!relayerKey) throw new Error("apps/web/.env.testnet needs RELAYER_PRIVATE_KEY");
+  if (!relayerKey) throw new Error(`apps/web/${envFile} needs RELAYER_PRIVATE_KEY`);
   const logsRpc = secrets.LOGS_RPC_URL;
 
   writeFileSync(
     join(root, "apps", "web", ".env.local"),
     [
-      "# Written by scripts/dev.ts --network testnet. Secrets come from .env.testnet.",
-      "NEXT_PUBLIC_CHAIN_ID=10143",
-      `NEXT_PUBLIC_RPC_URL=${TESTNET_RPC}`,
+      `# Written by scripts/dev.ts --network ${network}. Secrets come from ${envFile}.`,
+      `NEXT_PUBLIC_CHAIN_ID=${remoteChain.id}`,
+      `NEXT_PUBLIC_RPC_URL=${rpcUrl}`,
       `NEXT_PUBLIC_TIPOFF_ADDRESS=${dep.tipoff}`,
-      `NEXT_PUBLIC_USDC_ADDRESS=${dep.usdc}`,
+      // On testnet the app runs on TestUSDC, which anyone can drip from the in-app faucet.
+      `NEXT_PUBLIC_USDC_ADDRESS=${dep.testToken && dep.testToken !== zeroAddress ? dep.testToken : dep.usdc}`,
+      `NEXT_PUBLIC_FAUCET=${dep.testToken && dep.testToken !== zeroAddress ? 1 : 0}`,
       `NEXT_PUBLIC_START_BLOCK=${dep.startBlock}`,
       "NEXT_PUBLIC_FEE_BPS=50",
       "NEXT_PUBLIC_DEV_TOOLS=0",
       `RELAYER_PRIVATE_KEY=${relayerKey}`,
+      `CRON_SECRET=${bytesToHex(crypto.getRandomValues(new Uint8Array(24)))}`,
       ...(logsRpc ? [`LOGS_RPC_URL=${logsRpc}`] : []),
       "",
     ].join("\n"),
   );
-  log("deploy", `Monad testnet · Tipoff ${dep.tipoff} · USDC ${dep.usdc}${logsRpc ? " · logs via HyperRPC" : ""}`);
+  log("deploy", `Monad ${network} · Tipoff ${dep.tipoff} · USDC ${dep.usdc}${logsRpc ? " · logs via HyperRPC" : ""}`);
 
-  const client = createPublicClient({ chain: monadTestnet, transport: http(TESTNET_RPC) });
-  const logsClient = logsRpc ? createPublicClient({ chain: monadTestnet, transport: http(logsRpc) }) : client;
+  const client = createPublicClient({ chain: remoteChain, transport: http(rpcUrl) });
+  const logsClient = logsRpc ? createPublicClient({ chain: remoteChain, transport: http(logsRpc) }) : client;
   startWorker({
     client,
     logsClient,
-    chain: monadTestnet,
-    rpc: TESTNET_RPC,
+    chain: remoteChain,
+    rpc: rpcUrl,
     dep,
     account: privateKeyToAccount(relayerKey),
     evidence: false,
@@ -158,7 +176,7 @@ async function testnet() {
 }
 
 async function main() {
-  if (NETWORK === "testnet") return testnet();
+  if (NETWORK === "testnet" || NETWORK === "mainnet") return remote(NETWORK);
   if (NETWORK !== "local") throw new Error(`Unknown network ${NETWORK}`);
   const anvil = spawn("anvil", ["--network", "monad", "--chain-id", "31337", "--port", "8545", "--silent"], {
     stdio: "inherit",
@@ -172,7 +190,14 @@ async function main() {
   await run(
     "forge",
     ["script", "script/Deploy.s.sol:Deploy", "--rpc-url", RPC, "--private-key", DEPLOYER, "--broadcast", "--silent"],
-    { cwd: join(root, "contracts"), env: { FORWARDER: resolverAccount.address } },
+    {
+      cwd: join(root, "contracts"),
+      env: {
+        FORWARDER: resolverAccount.address,
+        WORKFLOW_ID: LOCAL_WORKFLOW_ID,
+        WORKFLOW_OWNER: resolverAccount.address,
+      },
+    },
   );
   const dep = JSON.parse(readFileSync(join(root, "contracts", "deployments", "31337.json"), "utf8")) as Deployment;
   log("deploy", `Tipoff ${dep.tipoff} · USDC ${dep.usdc}`);
@@ -190,6 +215,7 @@ async function main() {
       "NEXT_PUBLIC_DEV_TOOLS=1",
       `NEXT_PUBLIC_DEMO_SPONSOR_SEED=${DEMO_SPONSOR_SEED}`,
       `RELAYER_PRIVATE_KEY=${RELAYER}`,
+      `CRON_SECRET=${bytesToHex(crypto.getRandomValues(new Uint8Array(24)))}`,
       "",
     ].join("\n"),
   );
@@ -208,103 +234,214 @@ async function main() {
   startWeb();
 }
 
+/**
+ * A believable local world: a finished season where two fans called a creator the patron then signed (a paid, public
+ * call), and an open program with sealed, partly staked tip-offs waiting in the patron's conviction board.
+ */
 async function seed(client: ReturnType<typeof createPublicClient>, dep: { tipoff: Address; usdc: Address }) {
   const test = createTestClient({ chain: foundry, mode: "anvil", transport: http(RPC) });
   const deployer = createWalletClient({ account: privateKeyToAccount(DEPLOYER), chain: foundry, transport: http(RPC) });
-  const sponsor = demoAccount(DEMO_SPONSOR_SEED);
-  await test.setBalance({ address: sponsor.account.address, value: parseEther("10") });
-  await deployer.writeContract({
-    address: dep.usdc,
-    abi: mockUsdcAbi,
-    functionName: "mint",
-    args: [sponsor.account.address, parseUnits("25000", 6)],
-  });
+  const patron = demoAccount(DEMO_SPONSOR_SEED);
+  const patronWallet = createWalletClient({ account: patron.account, chain: foundry, transport: http(RPC) });
+  const send = async (hash: Promise<Hex>) => client.waitForTransactionReceipt({ hash: await hash });
+  const warp = async (seconds: bigint) => {
+    await test.increaseTime({ seconds: Number(seconds) });
+    await test.mine({ blocks: 1 });
+  };
 
-  const wallet = createWalletClient({ account: sponsor.account, chain: foundry, transport: http(RPC) });
-  await wallet.writeContract({
-    address: dep.usdc,
-    abi: erc20Abi,
-    functionName: "approve",
-    args: [dep.tipoff, parseUnits("25000", 6)],
-  });
-  const now = (await client.getBlock()).timestamp;
-  const tipDeadline = now + 14n * 86_400n;
-  const hash = await wallet.writeContract({
-    address: dep.tipoff,
-    abi: tipoffAbi,
-    functionName: "createProgram",
-    args: [
-      {
-        token: dep.usdc,
-        bounty: parseUnits("6000", 6),
-        rewardPerHit: parseUnits("1500", 6),
-        tipDeadline,
-        tailEnd: tipDeadline + 90n * 86_400n,
-        claimWindow: 30 * 86_400,
-        topK: 3,
-        maxTipsPerScout: 3,
-        sealKey: bytesToHex(sponsor.sealPublic),
-        evidenceSpec: encodeEvidenceSpec({
-          v: 1,
-          kind: "evm-payment",
-          token: dep.usdc,
-          treasuries: [sponsor.account.address],
-          minAmount: `${parseUnits("100", 6)}`,
-        }),
-        metadata: encodeMetadata({
-          v: 1,
-          title: "Founders we'll fund this quarter",
-          sponsorName: "Northlight Ventures (demo)",
-          brief:
-            "Pre-seed teams building consumer apps on Monad. If we write a cheque to someone you tipped, you get paid — whether or not we remember to say so.",
-          lookingFor: "A shipping team, real users without paid acquisition, and a reason they're early.",
-          candidateKind: CandidateKind.Wallet,
-        }),
-      },
-    ],
-  });
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  const programId = parseEventLogs({ abi: tipoffAbi, logs: receipt.logs, eventName: "ProgramCreated" })[0]?.args
-    .programId;
-  if (!programId) throw new Error("seed: program not created");
+  await test.setBalance({ address: patron.account.address, value: parseEther("10") });
+  await send(
+    deployer.writeContract({
+      address: dep.usdc,
+      abi: mockUsdcAbi,
+      functionName: "mint",
+      args: [patron.account.address, parseUnits("50000", 6)],
+    }),
+  );
+  await send(
+    patronWallet.writeContract({
+      address: dep.usdc,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [dep.tipoff, parseUnits("50000", 6)],
+    }),
+  );
 
-  const founders: [Address, string, string][] = [
-    [
-      "0x7f3a51c2aa0c7f4b54e2a7c9ae0e5d1b6f02c21e",
-      "Ada — payroll rails for gig workers",
-      "400 riders in Lagos, zero ads.",
-    ],
-    [
-      "0x19be8f3e1d6c8e2d3b9a0c4f7a2e5b6c8d0f04d7",
-      "Kenji — ZK proving in the browser",
-      "Rewrote a prover in a weekend.",
-    ],
-    ["0x7f3a51c2aa0c7f4b54e2a7c9ae0e5d1b6f02c21e", "Ada (again) — second scout on her", "Saw her demo at a meetup."],
-  ];
-  for (const [i, seedHex] of DEMO_SCOUT_SEEDS.entries()) {
+  async function program(opts: {
+    title: string;
+    patronName: string;
+    brief: string;
+    lookingFor: string;
+    tipDays: bigint;
+    claimDays: number;
+    bounty: string;
+    reward: string;
+  }) {
+    const now = (await client.getBlock()).timestamp;
+    const tipDeadline = now + opts.tipDays * 86_400n;
+    const receipt = await send(
+      patronWallet.writeContract({
+        address: dep.tipoff,
+        abi: tipoffAbi,
+        functionName: "createProgram",
+        args: [
+          {
+            token: dep.usdc,
+            bounty: parseUnits(opts.bounty, 6),
+            rewardPerHit: parseUnits(opts.reward, 6),
+            tipDeadline,
+            tailEnd: tipDeadline + 90n * 86_400n,
+            claimWindow: opts.claimDays * 86_400,
+            topK: 3,
+            maxTipsPerScout: 3,
+            baseWeight: parseUnits("100", 6),
+            minStake: 0n,
+            curveDepth: parseUnits("100", 6),
+            sealKey: bytesToHex(patron.sealPublic),
+            evidenceSpec: encodeEvidenceSpec({
+              v: 1,
+              kind: "evm-payment",
+              token: dep.usdc,
+              treasuries: [patron.account.address],
+              minAmount: `${parseUnits("100", 6)}`,
+            }),
+            metadata: encodeMetadata({
+              v: 1,
+              title: opts.title,
+              sponsorName: opts.patronName,
+              brief: opts.brief,
+              lookingFor: opts.lookingFor,
+              candidateKind: CandidateKind.Wallet,
+            }),
+          },
+        ],
+      }),
+    );
+    const id = parseEventLogs({ abi: tipoffAbi, logs: receipt.logs, eventName: "ProgramCreated" })[0]?.args.programId;
+    if (!id) throw new Error("seed: program not created");
+    return id;
+  }
+
+  async function tip(
+    scoutIndex: number,
+    programId: bigint,
+    creator: Address,
+    label: string,
+    note: string,
+    stakeUsdc = "0",
+  ) {
+    const seedHex = DEMO_SCOUT_SEEDS[scoutIndex] as Hex;
     const scout = demoAccount(seedHex);
-    const scoutKeys = deriveKeys(fromHex(seedHex));
-    const [founder, label, note] = founders[i] as [Address, string, string];
+    const stake = parseUnits(stakeUsdc, 6);
     await test.setBalance({ address: scout.account.address, value: parseEther("1") });
+    const w = createWalletClient({ account: scout.account, chain: foundry, transport: http(RPC) });
     const sealed = sealTip({
       ctx: { chainId: 31337, contract: dep.tipoff, programId, scout: scout.account.address },
-      sponsorSealKey: bytesToHex(sponsor.sealPublic),
-      scoutSealPublic: scoutKeys.sealPublic,
-      candidate: { kind: CandidateKind.Wallet, value: founder },
+      sponsorSealKey: bytesToHex(patron.sealPublic),
+      scoutSealPublic: deriveKeys(fromHex(seedHex)).sealPublic,
+      candidate: { kind: CandidateKind.Wallet, value: creator },
       label,
       note,
     });
-    const w = createWalletClient({ account: scout.account, chain: foundry, transport: http(RPC) });
-    await client.waitForTransactionReceipt({
-      hash: await w.writeContract({
+    if (stake > 0n) {
+      await send(
+        deployer.writeContract({
+          address: dep.usdc,
+          abi: mockUsdcAbi,
+          functionName: "mint",
+          args: [scout.account.address, stake],
+        }),
+      );
+      await send(
+        w.writeContract({ address: dep.usdc, abi: erc20Abi, functionName: "approve", args: [dep.tipoff, stake] }),
+      );
+    }
+    const receipt = await send(
+      w.writeContract({
         address: dep.tipoff,
         abi: tipoffAbi,
         functionName: "commitTip",
-        args: [programId, sealed.commitment, sealed.sponsorEnvelope, sealed.scoutEnvelope],
+        args: [
+          {
+            programId,
+            commitment: sealed.commitment,
+            stake,
+            sponsorEnvelope: sealed.sponsorEnvelope,
+            scoutEnvelope: sealed.scoutEnvelope,
+          },
+        ],
       }),
-    });
+    );
+    const tipId = parseEventLogs({ abi: tipoffAbi, logs: receipt.logs, eventName: "TipCommitted" })[0]?.args.tipId;
+    if (!tipId) throw new Error("seed: tip not committed");
+    return { tipId, candidateId: sealed.candidateId, salt: sealed.salt };
   }
-  log("seed", `demo program ${programId} with ${DEMO_SCOUT_SEEDS.length} sealed tips`);
+
+  const NALA: Address = "0x3c9e5b1d2f7a8c4e6b0d9f1a2c3e4b5d6f70a410";
+  const TOMAS: Address = "0x5b21c7d9e3f4a6b8c0d2e4f6a8b0c2d4e6f8a1b3";
+  const MIRA: Address = "0x7f3a51c2aa0c7f4b54e2a7c9ae0e5d1b6f02c21e";
+  const KENJI: Address = "0x19be8f3e1d6c8e2d3b9a0c4f7a2e5b6c8d0f04d7";
+
+  // A finished season: two fans called Nala before the label signed her.
+  const past = await program({
+    title: "Season one signings",
+    patronName: "Low Tide Records (demo)",
+    brief: "We sign two independent artists a season. Tip us off before everyone else hears them.",
+    lookingFor: "Unsigned, a real local crowd, releasing on their own.",
+    tipDays: 2n,
+    claimDays: 7,
+    bounty: "3000",
+    reward: "1500",
+  });
+  const a = await tip(0, past, NALA, "Nala Bloom — alt-R&B, Leeds", "Crowd sings every word at 200-cap shows.");
+  const b = await tip(1, past, NALA, "Nala Bloom", "Her second single is everywhere in Leeds.", "100");
+  await tip(2, past, TOMAS, "Tomás Vale — ambient guitar", "Loops live, sells tapes at the merch table.");
+  await warp(86_400n);
+  const resolved = await send(
+    patronWallet.writeContract({
+      address: dep.tipoff,
+      abi: tipoffAbi,
+      functionName: "resolve",
+      args: [past, a.candidateId],
+    }),
+  );
+  if (resolved.status !== "success") throw new Error("seed: resolve failed");
+  for (const t of [a, b]) {
+    await send(
+      deployer.writeContract({
+        address: dep.tipoff,
+        abi: tipoffAbi,
+        functionName: "proveTip",
+        args: [t.tipId, t.candidateId, t.salt],
+      }),
+    );
+  }
+  await warp(9n * 86_400n);
+  await send(
+    deployer.writeContract({
+      address: dep.tipoff,
+      abi: tipoffAbi,
+      functionName: "settle",
+      args: [past, a.candidateId],
+    }),
+  );
+
+  // Open now: the patron's conviction board has something to rank.
+  const open = await program({
+    title: "Artists we'll commission",
+    patronName: "Glasshouse DAO (demo)",
+    brief:
+      "We commission two onchain artists a month for our collection. If we pay someone you tipped, you get a finder's fee, whether or not we remember to say so.",
+    lookingFor: "A distinct style, a small crowd that keeps coming back, and a reason they're early.",
+    tipDays: 14n,
+    claimDays: 30,
+    bounty: "6000",
+    reward: "1500",
+  });
+  await tip(0, open, MIRA, "Mira Osei — generative textiles", "Every drop sells out to the same 40 collectors.");
+  await tip(1, open, KENJI, "@kenji — onchain game streams", "Chat grew 5× since August, no ads.", "100");
+  await tip(2, open, MIRA, "Mira Osei", "Saw her piece at the Monad meetup.", "250");
+  log("seed", `a paid call (program ${past}) and an open program (${open}) with 3 sealed tips`);
 }
 
 /**
@@ -360,7 +497,8 @@ function startWorker(opts: {
 }) {
   const { client, dep, account } = opts;
   const wallet = createWalletClient({ account, chain: opts.chain, transport: http(opts.rpc) });
-  const metadata = `0x${"00".repeat(64)}` as Hex; // workflow checks are off locally
+  // Same layout the CRE forwarder passes: workflowId(32) · workflowName(10) · workflowOwner(20) · reportName(2).
+  const metadata = concatHex([LOCAL_WORKFLOW_ID, `0x${"00".repeat(10)}`, account.address, "0x0000"]);
   const start = BigInt(dep.startBlock);
   const scanTipoff = scanner(opts.logsClient, start, opts.chunk, { address: dep.tipoff });
   const scanUsdc = scanner(opts.logsClient, start, opts.chunk, {

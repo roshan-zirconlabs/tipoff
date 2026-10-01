@@ -8,8 +8,9 @@ import { Logo } from "./logo";
 
 const links = [
   { href: "/programs", label: "Programs" },
-  { href: "/#how", label: "How it works" },
-  { href: "/sponsor/new", label: "For sponsors" },
+  { href: "/calls", label: "Called it" },
+  { href: "/scouts", label: "Scouts" },
+  { href: "/sponsor/new", label: "For patrons" },
 ];
 
 export function Nav() {
@@ -31,11 +32,11 @@ export function Nav() {
           : "border-b border-transparent"
       }`}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
+      <nav className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6 md:gap-6">
         <Logo />
         <ul className="hidden items-center gap-1 md:flex">
           {links.map((l) => {
-            const active = l.href !== "/#how" && pathname.startsWith(l.href);
+            const active = pathname.startsWith(l.href);
             return (
               <li key={l.href}>
                 <Link
