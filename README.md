@@ -1,4 +1,4 @@
-# Tipoff
+# Tipoff - A decentralized talent discovery marketplace
 
 **Call it first. Get paid when they sign.** Sealed scout markets on Monad: sponsors lock a bounty, scouts send
 sealed tips, and when the sponsor acts on a tipped candidate, the earliest scouts are paid, even if the sponsor acts
