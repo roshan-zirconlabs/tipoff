@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import type { CSSProperties } from "react";
 import { useState } from "react";
 import { useChainNow, useSnapshot } from "@/lib/client/snapshot";
 import { type ProgramPhase, phaseOf, type Snapshot } from "@/lib/types";
@@ -62,14 +63,9 @@ export function ProgramsList({ initial }: { initial: Snapshot | null }) {
       {shown.length ? (
         <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {shown.map((p, i) => (
-            <motion.div
-              key={p.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <div key={p.id} className="rise" style={{ "--rise-delay": `${i * 0.05}s` } as CSSProperties}>
               <ProgramCard program={p} now={now} />
-            </motion.div>
+            </div>
           ))}
         </div>
       ) : (

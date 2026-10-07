@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "@/lib/client/session";
 import { useChainNow, useSnapshot } from "@/lib/client/snapshot";
 import { mineOnly, useOpenedTips } from "@/lib/client/tips";
-import { explorerTx } from "@/lib/config";
+import { explorerTx, tokenLabel } from "@/lib/config";
 import { dateTime, duration, feeLabel, shortAddress, shortHash, usdc } from "@/lib/format";
 import { phaseOf, type Snapshot } from "@/lib/types";
 import { AddressMark } from "./account";
@@ -159,9 +159,9 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
             {spec.kind === "evm-payment" ? (
               <>
                 <p className="mt-3 leading-relaxed text-ink-2">
-                  A payment of at least <span className="numeric text-ink">${usdc(spec.minAmount)}</span> USDC from{" "}
-                  {spec.treasuries.length === 1 ? "this treasury" : "these treasuries"} to a tipped wallet, even if the
-                  patron never says so.
+                  A payment of at least <span className="numeric text-ink">${usdc(spec.minAmount)}</span> {tokenLabel}{" "}
+                  from {spec.treasuries.length === 1 ? "this treasury" : "these treasuries"} to a tipped wallet, even if
+                  the patron never says so.
                 </p>
                 <ul className="mt-3 space-y-1.5">
                   {spec.treasuries.map((t) => (

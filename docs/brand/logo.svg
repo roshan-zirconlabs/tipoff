@@ -1,0 +1,7 @@
+<svg role="img" aria-label="Tipoff" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Tipoff</title>
+  <rect width="1024" height="1024" fill="#f4f0e6"/>
+  <circle cx="512" cy="512" r="300" fill="#191713"/>
+  <path d="M352 432h320M512 432v240" stroke="#f4f0e6" stroke-width="64" stroke-linecap="round"/>
+  <circle cx="644" cy="644" r="62" fill="#e2542b"/>
+</svg>

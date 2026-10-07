@@ -94,7 +94,7 @@ function Toolbar() {
               <button
                 type="button"
                 onClick={() => {
-                  session.enterDevMode("Northlight (demo sponsor)", config.demoSponsorSeed ?? undefined);
+                  session.enterDevMode("Glasshouse DAO (demo)", config.demoSponsorSeed ?? undefined);
                   toast({ title: "Signed in as the demo patron", tone: "ok" });
                 }}
                 className="mb-3 w-full rounded-lg border border-[color-mix(in_oklab,var(--paper)_30%,transparent)] px-2 py-2 transition hover:bg-[color-mix(in_oklab,var(--paper)_10%,transparent)]"

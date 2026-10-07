@@ -34,13 +34,16 @@ type Form = {
   minStake: string;
 };
 
+// Testnet defaults fit inside one faucet drip (1,000 test dollars), so a first-time patron can open a program at once.
+const testDollars = config.faucet || config.devTools;
+
 const initial: Form = {
   title: "",
   sponsorName: "",
   brief: "",
   lookingFor: "",
-  bounty: "3000",
-  reward: "1000",
+  bounty: testDollars ? "750" : "3000",
+  reward: testDollars ? "250" : "1000",
   topK: 3,
   maxTips: 3,
   tipDays: 14,
@@ -48,7 +51,7 @@ const initial: Form = {
   claimDays: 30,
   treasuries: "",
   minPayment: "100",
-  convictionScale: "100",
+  convictionScale: testDollars ? "50" : "100",
   minStake: "0",
 };
 
@@ -83,13 +86,18 @@ function validate(f: Form): Partial<Record<keyof Form, string>> {
   return e;
 }
 
-export function SponsorForm() {
+/** Fields a patron invite link may pre-fill (`/sponsor/new?title=…&name=…`). Amounts stay validated as usual. */
+export type Prefill = Partial<Pick<Form, "title" | "sponsorName" | "brief" | "lookingFor" | "bounty" | "reward">> & {
+  tipDays?: number;
+};
+
+export function SponsorForm({ prefill = {} }: { prefill?: Prefill }) {
   const session = useSession();
   const signIn = useSignIn();
   const toast = useToast();
   const router = useRouter();
   const qc = useQueryClient();
-  const [f, setF] = useState<Form>(initial);
+  const [f, setF] = useState<Form>(() => ({ ...initial, ...prefill }));
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const me = session.profile?.address;

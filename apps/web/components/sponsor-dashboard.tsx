@@ -8,14 +8,19 @@ import { useMemo, useState } from "react";
 import type { Hex } from "viem";
 import { reputationOf, type ScoutStanding, standings } from "@/lib/calls";
 import { ActionError, resolveCandidate, withdrawRemainder } from "@/lib/client/actions";
+import { useFarcasterProfile } from "@/lib/client/farcaster";
+import { useOrigin } from "@/lib/client/origin";
 import { useSession } from "@/lib/client/session";
 import { useChainNow, useSnapshot } from "@/lib/client/snapshot";
 import { type OpenedTipView, useOpenedTips } from "@/lib/client/tips";
 import { config } from "@/lib/config";
 import { dateTime, duration, pad, shortAddress, usdc } from "@/lib/format";
+import { shareLinks } from "@/lib/share";
 import { type ProgramView, phaseOf, type Snapshot } from "@/lib/types";
 import { AddressMark } from "./account";
+import { CreatorChip } from "./creator-chip";
 import { Eye, Fingerprint, Lock } from "./icons";
+import { ShareRow } from "./share-row";
 import { useSignIn } from "./sign-in";
 import { useToast } from "./toast";
 import { Badge, Button, LiveDot, Stat } from "./ui";
@@ -164,12 +169,14 @@ export function SponsorDashboard({ id, initial }: { id: number; initial: Snapsho
         />
       </dl>
 
+      {phase === "tipping" ? <InviteFans program={program} /> : null}
+
       <section className="mt-12">
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">Conviction board</h2>
           <p className="max-w-md text-sm text-ink-3">
-            Ranked by conviction: every tip adds weight, stakes add more. Price is what the next share on that candidate
-            costs. Nobody but you can see it.
+            Ranked by conviction: every tip adds weight, stakes add more, and fans with a track record are flagged. The
+            multiplier is what the next share on that creator costs. Nobody but you can see it.
           </p>
         </div>
 
@@ -177,7 +184,7 @@ export function SponsorDashboard({ id, initial }: { id: number; initial: Snapsho
           <ul className="mt-6 grid gap-4 md:grid-cols-2">
             <AnimatePresence initial={false}>
               {groups.map((g) => (
-                <motion.li key={g.candidateId} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                <motion.li key={g.candidateId} layout className="rise min-w-0">
                   <CandidateCard
                     group={g}
                     program={program}
@@ -233,6 +240,15 @@ function CandidateCard({
   const [busy, setBusy] = useState(false);
   const p = group.first.plaintext;
   const who = group.tips.map((t) => t.plaintext?.label).find(Boolean) ?? "Unnamed candidate";
+  const handle = group.tips.map((t) => t.plaintext?.handle).find(Boolean) ?? null;
+  const fc = useFarcasterProfile(handle);
+  // Show the face only if the handle really owns the wallet the fans named.
+  const face =
+    fc.data && p?.candidate.kind === CandidateKind.Wallet
+      ? fc.data.wallets.some((w) => w.toLowerCase() === p.candidate.value.toLowerCase())
+        ? fc.data
+        : null
+      : null;
 
   async function act() {
     if (!session.keys) return;
@@ -254,14 +270,23 @@ function CandidateCard({
   }
 
   return (
-    <article className="card flex h-full flex-col p-5">
+    <article className="card flex h-full min-w-0 flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-lg font-semibold tracking-[-0.02em]">{who}</h3>
+          {face ? (
+            <div className="mb-2">
+              <CreatorChip profile={face} />
+            </div>
+          ) : null}
+          {face && who === `${face.displayName} (@${face.username})` ? null : (
+            <h3 className="truncate text-lg font-semibold tracking-[-0.02em]">{who}</h3>
+          )}
           {p?.candidate.kind === CandidateKind.Wallet ? (
-            <p className="numeric mt-0.5 flex items-center gap-1.5 text-sm text-ink-3">
+            <p className="numeric mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-ink-3">
               <AddressMark address={p.candidate.value} size={14} />
-              {p.candidate.value}
+              <span className="truncate" title={p.candidate.value}>
+                {p.candidate.value}
+              </span>
             </p>
           ) : p ? (
             <p className="numeric mt-0.5 text-sm text-ink-3">Deezer artist #{p.candidate.value}</p>
@@ -272,7 +297,12 @@ function CandidateCard({
             {group.price < 10 ? group.price.toFixed(2) : group.price.toFixed(1)}
             <span className="text-base">×</span>
           </p>
-          <p className="eyebrow mt-1">price</p>
+          <p
+            className="eyebrow mt-1"
+            title="What the next share on this creator costs. It rises with every tip and stake."
+          >
+            conviction
+          </p>
         </div>
       </div>
 
@@ -392,4 +422,24 @@ function WithdrawButton({ programId, canWithdraw }: { programId: number; canWith
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">{children}</div>;
+}
+
+/** A patron's community is its scout network: one place to send the program to them. */
+function InviteFans({ program }: { program: ProgramView }) {
+  const url = `${useOrigin()}/programs/${program.id}`;
+  const wanted = program.metadata.lookingFor || program.metadata.title;
+  const text = `${program.metadata.sponsorName || "We"} ${program.metadata.sponsorName ? "is" : "are"} looking for: ${wanted}. Tip us off on Tipoff, and if we back someone you called first, you get paid.`;
+  const links = shareLinks(url, text);
+  return (
+    <section className="card mt-10 p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="text-lg font-semibold tracking-[-0.02em]">Bring your community</h2>
+        <span className="numeric truncate text-sm text-ink-3">{url}</span>
+      </div>
+      <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2">
+        Your fans are your scouts. Share the program where they already talk; every tip lands here, sealed to you.
+      </p>
+      <ShareRow url={url} x={links.x} farcaster={links.farcaster} />
+    </section>
+  );
 }

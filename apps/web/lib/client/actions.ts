@@ -67,6 +67,8 @@ export async function sendTip(input: {
   candidate: CandidateRef;
   label: string;
   note: string;
+  /** The creator's Farcaster username when named by handle; sealed into the tip. */
+  handle?: string | null;
   /** Refundable stake in base units; 0 for a free tip. */
   stake: bigint;
   keys: Keys;
@@ -91,6 +93,7 @@ export async function sendTip(input: {
     candidate: input.candidate,
     label: input.label,
     note: input.note,
+    handle: input.handle,
   });
   const [n, d] = await Promise.all([nonce(scout), deadline()]);
   const signature = await input.keys.account.signTypedData({

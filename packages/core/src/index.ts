@@ -2,6 +2,7 @@ export * from "./abi.ts";
 export * from "./candidate.ts";
 export * from "./deployment.ts";
 export * from "./evidence.ts";
+export * from "./farcaster.ts";
 export * from "./hashing.ts";
 export * from "./keys.ts";
 export * from "./program.ts";

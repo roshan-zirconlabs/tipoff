@@ -3,6 +3,6 @@
   "tipoff": "0x50fd4cA4a9B3BB60D772FAd5ecdf4736a5F85707",
   "usdc": "0xB98D8cd9D58249E2fC61e157EB5102745EF59F59",
   "treasuries": ["0x02847D22C33f5F060Bd27e69F1a413AD44cab213"],
-  "evidenceApi": "http://localhost:3000/api/evidence",
+  "evidenceApi": "https://tipoff-phi.vercel.app/api/evidence",
   "gasLimit": "600000"
 }

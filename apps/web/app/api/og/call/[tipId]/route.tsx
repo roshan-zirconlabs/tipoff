@@ -1,9 +1,12 @@
 import { ImageResponse } from "next/og";
 import { calls, cleanLabel, verifiedCreator } from "@/lib/calls";
 import { pad, shortAddress, usdc } from "@/lib/format";
+import { profileOwning } from "@/lib/server/farcaster";
+import { ogFonts } from "@/lib/server/og-font";
 import { loadSnapshot } from "@/lib/server/snapshot";
+import { evidenceCreators } from "@/lib/server/trust";
 
-// The social card for a call: 1200×630, the brand's paper, ink and vermilion.
+// The social card for a call: 1200×630 for X and link previews, or 1200×800 (`?ratio=3x2`) for Farcaster embeds.
 
 export async function GET(request: Request, { params }: { params: Promise<{ tipId: string }> }) {
   const { tipId } = await params;
@@ -11,9 +14,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ tipI
   const snapshot = await loadSnapshot();
   const call = calls(snapshot).find((c) => c.tipId === Number(tipId));
   if (!call) return new Response("Not found", { status: 404 });
-  const creator = verifiedCreator(call, url.searchParams.get("c"));
-  const label = creator ? cleanLabel(url.searchParams.get("n")) : null;
+  const shared = verifiedCreator(call, url.searchParams.get("c"));
+  const creator =
+    shared ??
+    (call.source === "evidence"
+      ? ((await evidenceCreators(snapshot.programs).catch(() => new Map())).get(
+          `${call.programId}:${call.candidateId}`,
+        ) ?? null)
+      : null);
+  const profile = await profileOwning(url.searchParams.get("h"), creator).catch(() => null);
+  const label = (shared ? cleanLabel(url.searchParams.get("n")) : null) ?? profile?.displayName ?? null;
   const days = Math.round(call.daysEarly);
+  const tall = url.searchParams.get("ratio") === "3x2";
   const patron = call.patronName || shortAddress(call.patron);
 
   return new ImageResponse(
@@ -27,7 +39,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ tipI
         padding: 72,
         background: "#f4f0e6",
         color: "#191713",
-        fontFamily: "sans-serif",
+        fontFamily: "Bricolage, sans-serif",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 28, color: "#6b655a" }}>
@@ -47,6 +59,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ tipI
         <span style={{ color: "#191713" }}>{call.amount ? `earned $${usdc(call.amount)}` : "claimed"}</span>
       </div>
     </div>,
-    { width: 1200, height: 630 },
+    { width: 1200, height: tall ? 800 : 630, fonts: await ogFonts() },
   );
 }

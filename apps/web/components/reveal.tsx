@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 /** Words rise into place one after another. Used for the few headlines that earn it. */
 export function RevealWords({ text, className = "", delay = 0 }: { text: string; className?: string; delay?: number }) {
@@ -51,27 +51,24 @@ export function Scribble({ children, delay = 0.7 }: { children: ReactNode; delay
   );
 }
 
-/** Fades content up when it scrolls into view — or on mount with `immediate`, for anything above the fold. */
+/**
+ * Fades content up into place. Pure CSS, so server-rendered content is visible even before (or without) JavaScript,
+ * and reduced-motion users get it instantly via the global reduced-motion rule.
+ */
 export function FadeIn({
   children,
   delay = 0,
   className = "",
-  immediate = false,
 }: {
   children: ReactNode;
   delay?: number;
   className?: string;
+  /** Kept for call-site compatibility; every entrance now plays on load. */
   immediate?: boolean;
 }) {
-  const reveal = { opacity: 1, y: 0 };
   return (
-    <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 14 }}
-      {...(immediate ? { animate: reveal } : { whileInView: reveal, viewport: { once: true, amount: 0.3 } })}
-      transition={{ delay, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-    >
+    <div className={`rise ${className}`} style={{ "--rise-delay": `${delay}s` } as CSSProperties}>
       {children}
-    </motion.div>
+    </div>
   );
 }

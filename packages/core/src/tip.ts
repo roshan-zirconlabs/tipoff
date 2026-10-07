@@ -1,6 +1,7 @@
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { type Address, encodeAbiParameters, type Hex, keccak256, toBytes } from "viem";
 import { type CandidateRef, candidateId } from "./candidate.ts";
+import { normalizeHandle } from "./farcaster.ts";
 import { commitmentOf, randomBytes32 } from "./hashing.ts";
 import { MAX_NOTE_CHARS } from "./program.ts";
 import { open, seal } from "./seal.ts";
@@ -14,6 +15,8 @@ export type TipPlaintext = {
   label: string;
   /** Why now. Max 280 characters. */
   note: string;
+  /** The creator's Farcaster username, when the scout named them by handle. Sealed like everything else. */
+  handle?: string;
 };
 
 export type TipContext = { chainId: number; contract: Address; programId: bigint; scout: Address };
@@ -50,6 +53,7 @@ export function sealTip(input: {
   candidate: CandidateRef;
   label: string;
   note: string;
+  handle?: string | null;
 }): SealedTip {
   const salt = randomBytes32();
   const id = candidateId(input.candidate);
@@ -59,6 +63,7 @@ export function sealTip(input: {
     salt,
     label: input.label.trim().slice(0, 80),
     note: input.note.trim().slice(0, MAX_NOTE_CHARS),
+    ...(input.handle ? { handle: normalizeHandle(input.handle) ?? undefined } : {}),
   };
   const bytes = new TextEncoder().encode(JSON.stringify(plaintext));
   const aad = tipAad(input.ctx);

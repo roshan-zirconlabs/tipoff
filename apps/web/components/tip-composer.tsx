@@ -1,15 +1,25 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { CandidateInputError, CandidateKind, MAX_NOTE_CHARS, parseCandidate, stakeBoost } from "@tipoff/core";
+import {
+  CandidateInputError,
+  CandidateKind,
+  looksLikeHandle,
+  MAX_NOTE_CHARS,
+  normalizeHandle,
+  parseCandidate,
+  stakeBoost,
+} from "@tipoff/core";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { ActionError, sendTip } from "@/lib/client/actions";
+import { useFarcasterProfile } from "@/lib/client/farcaster";
 import { useSession } from "@/lib/client/session";
 import { explorerTx } from "@/lib/config";
 import { dateTime, pad, shortHash, usdc } from "@/lib/format";
 import type { ProgramView } from "@/lib/types";
+import { CreatorChip } from "./creator-chip";
 import { FaucetButton } from "./faucet-button";
 import { ArrowRight, Lock } from "./icons";
 import { useSignIn } from "./sign-in";
@@ -32,6 +42,8 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
   const [error, setError] = useState<{ field?: "candidate" | "stake"; message: string } | null>(null);
 
   const kind = program.metadata.candidateKind;
+  const fcHandle = kind === CandidateKind.Wallet && looksLikeHandle(candidate) ? normalizeHandle(candidate) : null;
+  const fc = useFarcasterProfile(fcHandle);
   const left = Math.max(0, program.maxTipsPerScout - used);
   const isSponsor = session.profile?.address.toLowerCase() === program.sponsor.toLowerCase();
   const curve = { baseWeight: BigInt(program.baseWeight), curveDepth: BigInt(program.curveDepth) };
@@ -50,8 +62,24 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
     }
     setError(null);
     let ref: ReturnType<typeof parseCandidate>;
+    let handle: string | null = null;
+    let autoLabel = label;
     try {
-      ref = parseCandidate(kind, candidate);
+      if (fcHandle) {
+        if (fc.settling) throw new CandidateInputError(`Still looking up @${fcHandle}…`);
+        if (!fc.data)
+          throw new CandidateInputError(`No Farcaster user @${fcHandle}. Check the spelling, or paste a wallet.`);
+        if (!fc.data.primary) {
+          throw new CandidateInputError(
+            `@${fc.data.username} hasn't verified a wallet on Farcaster yet. Paste theirs instead.`,
+          );
+        }
+        ref = { kind: CandidateKind.Wallet, value: fc.data.primary };
+        handle = fc.data.username;
+        if (!autoLabel.trim()) autoLabel = `${fc.data.displayName} (@${fc.data.username})`;
+      } else {
+        ref = parseCandidate(kind, candidate);
+      }
     } catch (err) {
       setError({
         field: "candidate",
@@ -74,8 +102,9 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
       const res = await sendTip({
         program,
         candidate: ref,
-        label,
+        label: autoLabel,
         note,
+        handle,
         stake,
         keys: session.keys,
         profile: session.profile,
@@ -164,14 +193,14 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
               <div>
                 <Label
                   htmlFor="candidate"
-                  hint={kind === CandidateKind.Wallet ? "Where they'd be paid" : "Deezer link or id"}
+                  hint={kind === CandidateKind.Wallet ? "Farcaster @handle, wallet, or a link" : "Deezer link or id"}
                 >
-                  {kind === CandidateKind.Wallet ? "The creator's wallet" : "Artist"}
+                  {kind === CandidateKind.Wallet ? "Who's the creator?" : "Artist"}
                 </Label>
                 <input
                   id="candidate"
                   className="field numeric"
-                  placeholder={kind === CandidateKind.Wallet ? "0x…" : "https://www.deezer.com/artist/…"}
+                  placeholder={kind === CandidateKind.Wallet ? "@nala or 0x…" : "https://www.deezer.com/artist/…"}
                   value={candidate}
                   onChange={(e) => setCandidate(e.target.value)}
                   aria-invalid={error?.field === "candidate"}
@@ -180,6 +209,29 @@ export function TipComposer({ program, used }: { program: ProgramView; used: num
                   required
                 />
                 <FieldError>{error?.field === "candidate" ? error.message : null}</FieldError>
+                {fcHandle ? (
+                  <div className="mt-2 min-h-12 rounded-xl border border-rule bg-paper px-3 py-2.5" aria-live="polite">
+                    {fc.settling ? (
+                      <p className="text-sm text-ink-3">Looking up @{fcHandle} on Farcaster…</p>
+                    ) : fc.data ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <CreatorChip profile={fc.data} wallet={fc.data.primary} />
+                        <span className={`shrink-0 text-xs ${fc.data.primary ? "text-ok" : "text-signal-ink"}`}>
+                          {fc.data.primary ? "verified wallet" : "no wallet yet"}
+                        </span>
+                      </div>
+                    ) : fc.isError ? (
+                      <p className="text-sm text-ink-3">Couldn't reach Farcaster. Paste their wallet instead.</p>
+                    ) : (
+                      <p className="text-sm text-ink-3">No Farcaster user @{fcHandle}.</p>
+                    )}
+                  </div>
+                ) : kind === CandidateKind.Wallet && error?.field !== "candidate" ? (
+                  <p className="mt-1.5 text-xs leading-relaxed text-ink-3">
+                    Type their Farcaster @handle and we'll find their verified wallet, or paste a wallet or any link
+                    with one. Only the patron will ever see who you named.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <Label htmlFor="label" hint="Optional">

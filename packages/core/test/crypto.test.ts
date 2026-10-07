@@ -114,6 +114,22 @@ describe("sealTip / openTip", () => {
     expect(opened.valid).toBe(false);
   });
 
+  it("carries the creator's Farcaster handle sealed, normalised, and only when given", () => {
+    const withHandle = sealTip({
+      ctx,
+      sponsorSealKey: hex(sponsor.sealPublic),
+      scoutSealPublic: scoutKeys.sealPublic,
+      candidate,
+      label: "Ada",
+      note: "",
+      handle: "@Ada-Builds",
+    });
+    expect(openTip(sponsor.sealSecret, withHandle.sponsorEnvelope, ctx, withHandle.commitment).handle).toBe(
+      "ada-builds",
+    );
+    expect(openTip(sponsor.sealSecret, sealed.sponsorEnvelope, ctx, sealed.commitment).handle).toBeUndefined();
+  });
+
   it("keeps envelopes under the on-chain size limit", () => {
     const long = sealTip({
       ctx,
@@ -122,6 +138,7 @@ describe("sealTip / openTip", () => {
       candidate,
       label: "x".repeat(500),
       note: "y".repeat(5000),
+      handle: "a-sixteen-chars1",
     });
     expect((long.sponsorEnvelope.length - 2) / 2).toBeLessThanOrEqual(1024);
   });

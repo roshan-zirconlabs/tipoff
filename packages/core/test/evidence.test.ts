@@ -87,6 +87,16 @@ describe("parseCandidate", () => {
     expect(() => parseCandidate(CandidateKind.Wallet, "0x123")).toThrow(CandidateInputError);
   });
 
+  it("finds the one wallet in a pasted link or bio, never a tx hash", () => {
+    const want = { kind: CandidateKind.Wallet, value: "0x2222222222222222222222222222222222222222" };
+    expect(parseCandidate(CandidateKind.Wallet, `https://testnet.monadvision.com/address/${FOUNDER}`)).toEqual(want);
+    expect(parseCandidate(CandidateKind.Wallet, `tips welcome: ${FOUNDER} ✨ (same as ${FOUNDER})`)).toEqual(want);
+    expect(() => parseCandidate(CandidateKind.Wallet, `0x${"ab".repeat(32)}`)).toThrow(CandidateInputError);
+    expect(() =>
+      parseCandidate(CandidateKind.Wallet, `${FOUNDER} and 0x3333333333333333333333333333333333333333`),
+    ).toThrow(/more than one wallet/);
+  });
+
   it("accepts Deezer links and ids", () => {
     expect(parseCandidate(CandidateKind.DeezerArtist, "https://www.deezer.com/en/artist/27")).toEqual({
       kind: CandidateKind.DeezerArtist,

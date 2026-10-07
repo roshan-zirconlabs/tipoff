@@ -135,7 +135,7 @@ export function MyTipRow({
         ) : null}
         {(status.kind === "paid" || status.kind === "claimed") && p?.candidate.kind === CandidateKind.Wallet ? (
           <Link
-            href={receiptPath(tip.tipId, p.candidate.value, p.label || null)}
+            href={receiptPath(tip.tipId, p.candidate.value, p.label || null, p.handle ?? null)}
             className="rounded-full border border-rule-strong px-3 py-1.5 text-sm transition hover:border-ink"
           >
             Share

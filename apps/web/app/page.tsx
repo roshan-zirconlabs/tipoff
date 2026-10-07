@@ -1,13 +1,15 @@
 import { BackdoorTimeline } from "@/components/backdoor-timeline";
 import { CallCard } from "@/components/call-card";
-import { HeroCard } from "@/components/hero-card";
+import { HeroStage } from "@/components/hero-stage";
 import { ArrowRight } from "@/components/icons";
 import { Ledger } from "@/components/ledger";
+import { Parallax } from "@/components/motion/parallax";
 import { ProgramCard } from "@/components/program-card";
 import { FadeIn, RevealWords, Scribble } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
 import { calls } from "@/lib/calls";
 import { loadSnapshot } from "@/lib/server/snapshot";
+import { evidenceCreators } from "@/lib/server/trust";
 import { phaseOf } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +36,7 @@ export default async function Home() {
   const snapshot = await loadSnapshot().catch(() => null);
   const open = snapshot?.programs.filter((p) => phaseOf(p, snapshot.now) === "tipping").slice(0, 3) ?? [];
   const latestCalls = snapshot ? calls(snapshot).slice(0, 3) : [];
+  const creators = snapshot ? await evidenceCreators(snapshot.programs).catch(() => new Map()) : new Map();
 
   return (
     <>
@@ -71,7 +74,7 @@ export default async function Home() {
           </FadeIn>
         </div>
         <FadeIn delay={0.25} immediate>
-          <HeroCard />
+          <HeroStage />
         </FadeIn>
       </section>
 
@@ -147,11 +150,13 @@ export default async function Home() {
               Every call <ArrowRight />
             </ButtonLink>
           </div>
-          <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {latestCalls.map((c) => (
-              <CallCard key={c.tipId} call={c} />
-            ))}
-          </div>
+          <Parallax speed={0.05}>
+            <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {latestCalls.map((c) => (
+                <CallCard key={c.tipId} call={c} creator={creators.get(`${c.programId}:${c.candidateId}`)} />
+              ))}
+            </div>
+          </Parallax>
         </section>
       ) : null}
 
@@ -169,9 +174,11 @@ export default async function Home() {
             </p>
           </FadeIn>
         </div>
-        <div className="card mt-14 p-7 sm:p-10">
-          <BackdoorTimeline />
-        </div>
+        <Parallax speed={0.06}>
+          <div className="card mt-14 p-7 sm:p-10">
+            <BackdoorTimeline />
+          </div>
+        </Parallax>
       </section>
 
       <section className="mx-auto max-w-6xl px-4 pt-28 sm:px-6">

@@ -41,10 +41,20 @@ export function parseCandidate(kind: CandidateKind, input: string): CandidateRef
   const raw = input.trim();
   switch (kind) {
     case CandidateKind.Wallet: {
-      if (!isAddress(raw, { strict: false })) {
-        throw new CandidateInputError("Paste a full wallet address (0x… with 40 hex characters).");
+      if (isAddress(raw, { strict: false })) return { kind, value: getAddress(raw) };
+      // Pasted from an explorer link, a profile or a bio: take the one wallet in it. A 64-hex tx hash never matches.
+      const found = [
+        ...new Set(
+          [...raw.matchAll(/(?<![0-9a-fA-F])0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)].map((m) => m[0].toLowerCase()),
+        ),
+      ];
+      if (found.length > 1) throw new CandidateInputError("That contains more than one wallet. Paste just theirs.");
+      if (found.length === 0 || !isAddress(found[0] as string, { strict: false })) {
+        throw new CandidateInputError(
+          "Paste their wallet address (0x… with 40 hex characters), or a link that has it.",
+        );
       }
-      return { kind, value: getAddress(raw) };
+      return { kind, value: getAddress(found[0] as string) };
     }
     case CandidateKind.DeezerArtist: {
       const fromUrl = raw.match(/deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/i)?.[1];

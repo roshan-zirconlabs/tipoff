@@ -1,16 +1,18 @@
 import type { Address } from "viem";
 
 /** The public URL of a call's receipt; `c` (creator wallet) is verified server-side before it is shown. */
-export function receiptPath(tipId: number, creator?: Address | null, label?: string | null): string {
+export function receiptPath(
+  tipId: number,
+  creator?: Address | null,
+  label?: string | null,
+  handle?: string | null,
+): string {
   const q = new URLSearchParams();
   if (creator) q.set("c", creator);
   if (creator && label) q.set("n", label);
+  if (creator && handle) q.set("h", handle);
   const qs = q.toString();
   return `/calls/${tipId}${qs ? `?${qs}` : ""}`;
-}
-
-export function siteUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
 export function shareText(opts: { label: string | null; daysEarly: number; patron: string }): string {

@@ -239,3 +239,103 @@ body::before {
     box-shadow: 0 0 0 6px color-mix(in oklab, var(--signal) 0%, transparent);
   }
 }
+
+/* Entrances run in CSS, so content is never left invisible if JavaScript is slow, blocked or throttled. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+/* Only when an inline script saw a visible page: without JS, in a background tab or for a bot, content just shows. */
+.motion-ok .rise {
+  animation: rise 0.7s var(--ease-out-quint) both;
+  animation-delay: var(--rise-delay, 0s);
+}
+
+/* ─── Lucid layer ───────────────────────────────────────────────────────────────────────────────────────────────────
+   Soft lights drifting behind the page, and objects that float. Transform-only, so nothing can be hidden by them. */
+
+:root {
+  --glow-a: color-mix(in oklab, var(--signal) 22%, transparent);
+  --glow-b: color-mix(in oklab, #f5b46b 30%, transparent);
+  --glow-c: color-mix(in oklab, var(--signal) 12%, transparent);
+}
+
+.ambient-light {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  will-change: transform;
+}
+.ambient-a {
+  top: -14vmax;
+  right: -10vmax;
+  width: 52vmax;
+  height: 52vmax;
+  background: radial-gradient(circle at center, var(--glow-a), transparent 65%);
+  animation: drift-a 26s ease-in-out infinite alternate;
+}
+.ambient-b {
+  bottom: -20vmax;
+  left: -16vmax;
+  width: 60vmax;
+  height: 60vmax;
+  background: radial-gradient(circle at center, var(--glow-b), transparent 62%);
+  animation: drift-b 34s ease-in-out infinite alternate;
+}
+.ambient-c {
+  top: 38%;
+  left: 42%;
+  width: 34vmax;
+  height: 34vmax;
+  background: radial-gradient(circle at center, var(--glow-c), transparent 60%);
+  animation: drift-c 22s ease-in-out infinite alternate;
+}
+@keyframes drift-a {
+  to {
+    transform: translate3d(-9vmax, 7vmax, 0) scale(1.12);
+  }
+}
+@keyframes drift-b {
+  to {
+    transform: translate3d(11vmax, -8vmax, 0) scale(0.92);
+  }
+}
+@keyframes drift-c {
+  to {
+    transform: translate3d(-12vmax, -6vmax, 0) scale(1.2);
+  }
+}
+
+/* Floating objects: a slow bob with a little sway. Each gets its own period so a group never moves in lockstep. */
+.float {
+  animation: float var(--float-period, 7s) ease-in-out infinite;
+  animation-delay: var(--float-delay, 0s);
+  will-change: transform;
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(var(--float-tilt, 0deg));
+  }
+  50% {
+    transform: translate3d(0, var(--float-rise, -12px), 0) rotate(calc(var(--float-tilt, 0deg) * -1));
+  }
+}
+
+/* Lenis (smooth scrolling) needs these to behave with native features. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  /* biome-ignore lint/complexity/noImportantStyles: Lenis drives scrolling; native smooth-scroll must not fight it */
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}

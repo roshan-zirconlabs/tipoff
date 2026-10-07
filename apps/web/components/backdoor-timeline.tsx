@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import type { CSSProperties } from "react";
 import { Stamp } from "./stamp";
 
 const STEPS = [
@@ -11,7 +12,7 @@ const STEPS = [
   {
     day: "Day 91",
     title: "Scouts get paid",
-    body: "Earliest first: 57% · 29% · 14%. The bounty was locked the whole time.",
+    body: "Earliest first: about 67% · 22% · 11%, more with a stake. The bounty was locked the whole time.",
   },
 ];
 
@@ -30,13 +31,10 @@ export function BackdoorTimeline() {
       />
       <ol className="relative grid gap-8 md:grid-cols-5 md:gap-5">
         {STEPS.map((s, i) => (
-          <motion.li
+          <li
             key={s.title}
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.4 }}
-            transition={{ delay: 0.25 + i * 0.38, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="relative pl-12 md:pl-0 md:pt-12"
+            className="rise relative pl-12 md:pl-0 md:pt-12"
+            style={{ "--rise-delay": `${0.25 + i * 0.38}s` } as CSSProperties}
           >
             <span
               className={`absolute left-0 top-0 grid size-[2.1rem] place-items-center rounded-full border text-xs font-semibold numeric ${
@@ -57,7 +55,7 @@ export function BackdoorTimeline() {
                 <Stamp number="PAID" label="PAID · FIRST CALL · PAID · FIRST CALL ·" tone="ok" size={96} tilt={-10} />
               </div>
             ) : null}
-          </motion.li>
+          </li>
         ))}
       </ol>
     </div>

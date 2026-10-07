@@ -35,12 +35,12 @@ Checked against the live pages on 30 Sep 2026:
 | Requirement | Where | Status |
 |---|---|---|
 | Built during Sep 1 – Oct 13 | Monad | ✅ Repo history starts 25 Sep 2026 |
-| Public GitHub repo, readable by `metropolis@hackathon.monad.xyz` | Monad | ⬜ **You:** make public or add access |
+| Public GitHub repo, readable by `metropolis@hackathon.monad.xyz` | Monad | ✅ Public; README has a judge section and bounty proof links |
 | Repo link (private allowed with access for `hackathon@colosseum.com`) | Colosseum | ⬜ **You** |
 | Live product link on Monad testnet + judge access instructions | Monad | 🟡 App works on testnet; **needs hosting** (Vercel, your account) |
 | Technical demo video ≤ 3 min, live product, not slides | Both | ⬜ Script below |
 | Pitch video ≤ 2 min (Monad) / 2–3 min presentation (Colosseum) | Both | ⬜ Outline below |
-| Logo / graphic (JPG/PNG/WEBP ≤ 3 MB) | Both | ⬜ Export from `apps/web/components/logo.tsx` |
+| Logo / graphic (JPG/PNG/WEBP ≤ 3 MB) | Both | ✅ `docs/brand/logo.png` (1024², 41 KB) |
 | Go-to-market, demand validation, team background | Colosseum | ⬜ Draft below; add your background |
 | Weekly one-minute update videos (recommended) | Colosseum | ⬜ **You:** post this week's |
 | Traction: "any real community engagement, even a small test group" | Monad (20%) | ⬜ **Most important gap.** Plan below |
@@ -101,7 +101,7 @@ markets where scouts bet on outcomes. We credit the idea and change three things
 
 ## Judge access (paste into the submission form)
 
-1. Open **<live URL>** on a phone or laptop and tap **Sign in**. A passkey (Face ID or Touch ID) creates your account.
+1. Open **https://tipoff-phi.vercel.app** on a phone or laptop and tap **Sign in**. A passkey (Face ID or Touch ID) creates your account.
    There's no seed phrase, extension or gas.
 2. Open the account menu and tap **Get 1,000 test dollars**. That's the TestUSDC faucet, relayed, so still no gas.
 3. **As a fan:** open *Glasshouse DAO — Artists we'll commission*. Tip-off any wallet, optionally backed by a stake.
@@ -167,7 +167,10 @@ markets where scouts bet on outcomes. We credit the idea and change three things
   events alone.
 - The web app reads it over GraphQL when `ENVIO_GRAPHQL_URL` is set.
 - It powers the core pages: the Scouts leaderboard, the calls feed and public records.
-- **Needs:** an Envio Cloud deploy, with an API token for HyperRPC log reads. Ask in Discord.
+- **Live:** Envio Cloud at `https://indexer.dev.hyperindex.xyz/4b82532/v1/graphql` (deployed 1 Oct; HyperSync, no token
+  needed).
+- Without it, the hosted app can't read the chain: the public RPC allows 25 requests/s and caps `eth_getLogs` at 100
+  blocks, so replaying history failed within two days. With Envio, pages load in about 0.3 s.
 
 **Mera: One Passkey, Many Keys ($2.5k).**
 - One passkey's PRF output is HKDF'd into **two** keys: a secp256k1 account key, and an **X25519 sealing key**.
