@@ -10,6 +10,7 @@ const contracts = [
   { file: "Tipoff.sol/Tipoff.json", name: "tipoffAbi" },
   { file: "MockUSDC.sol/MockUSDC.json", name: "mockUsdcAbi" },
   { file: "TestUSDC.sol/TestUSDC.json", name: "testUsdcAbi" },
+  { file: "TipoffReveals.sol/TipoffReveals.json", name: "tipoffRevealsAbi" },
 ];
 
 const body = contracts

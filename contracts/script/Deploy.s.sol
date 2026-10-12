@@ -5,6 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {Tipoff} from "../src/Tipoff.sol";
 import {MockUSDC} from "../test/mocks/MockUSDC.sol";
 import {TestUSDC} from "../src/testnet/TestUSDC.sol";
+import {TipoffReveals} from "../src/TipoffReveals.sol";
 
 /// @notice Deploys Tipoff and writes deployments/<chainId>.json.
 ///
@@ -40,6 +41,7 @@ contract Deploy is Script {
             tipoff.setAllowedToken(testToken, true);
         }
         if (forwarder != address(0)) tipoff.setResolverConfig(forwarder, workflowId, workflowOwner);
+        TipoffReveals reveals = new TipoffReveals(tipoff);
         vm.stopBroadcast();
 
         string memory key = "deployment";
@@ -47,6 +49,7 @@ contract Deploy is Script {
         vm.serializeUint(key, "startBlock", block.number);
         vm.serializeAddress(key, "usdc", usdc);
         vm.serializeAddress(key, "testToken", testToken);
+        vm.serializeAddress(key, "reveals", address(reveals));
         vm.serializeAddress(key, "forwarder", forwarder);
         vm.serializeBytes32(key, "workflowId", workflowId);
         vm.serializeAddress(key, "workflowOwner", workflowOwner);

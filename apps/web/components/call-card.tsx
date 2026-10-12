@@ -1,8 +1,9 @@
 import Link from "next/link";
-import type { Address } from "viem";
 import { AddressMark } from "@/components/account";
+import { CreatorChip } from "@/components/creator-chip";
 import { Tilt } from "@/components/motion/tilt";
 import type { Call } from "@/lib/calls";
+import type { CreatorView } from "@/lib/creator-view";
 import { dateTime, pad, shortAddress, usdc } from "@/lib/format";
 
 export function daysLabel(days: number): string {
@@ -12,7 +13,7 @@ export function daysLabel(days: number): string {
 }
 
 /** A call in the feed, the way people brag about it: who you called, when, and what happened. */
-export function CallCard({ call, creator }: { call: Call; creator?: Address | null }) {
+export function CallCard({ call, creator }: { call: Call; creator?: CreatorView | null }) {
   const patron = call.patronName || shortAddress(call.patron);
   return (
     <Tilt className="h-full">
@@ -26,17 +27,23 @@ export function CallCard({ call, creator }: { call: Call; creator?: Address | nu
             {daysLabel(call.daysEarly)}
           </span>
         </div>
-        <p className="mt-4 flex items-center gap-2 text-lg font-semibold leading-snug tracking-[-0.02em]">
-          Called{" "}
-          {creator ? (
-            <>
-              <AddressMark address={creator} size={18} />
-              <span className="numeric">{shortAddress(creator)}</span>
-            </>
+        <div className="mt-4">
+          {creator?.profile ? (
+            <CreatorChip profile={creator.profile} wallet={creator.wallet} />
           ) : (
-            "a creator"
+            <p className="flex items-center gap-2 text-lg font-semibold leading-snug tracking-[-0.02em]">
+              Called{" "}
+              {creator ? (
+                <>
+                  <AddressMark address={creator.wallet} size={18} />
+                  <span className="numeric">{shortAddress(creator.wallet)}</span>
+                </>
+              ) : (
+                "a creator"
+              )}
+            </p>
           )}
-        </p>
+        </div>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-2">
           Sealed {dateTime(call.committedAt)}. {patron} paid them {dateTime(call.actedAt)}.
         </p>

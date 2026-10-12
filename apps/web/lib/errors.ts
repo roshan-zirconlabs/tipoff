@@ -26,6 +26,10 @@ export const contractErrorMessages: Record<string, string> = {
   StakeTooLow: "This program needs a bigger stake behind each tip.",
   StakeLocked: "Stakes unlock when tipping closes.",
   FaucetCooldown: "You already got test dollars in the last hour. Try again soon.",
+  NotProven: "Claim the tip before making it public.",
+  WrongCreator: "That creator doesn't match the sealed tip.",
+  BadHandle: "That Farcaster handle is too long.",
+  AlreadyRevealed: "This call is already public.",
   NothingToReturn: "There's no stake left to return on that tip.",
 };
 

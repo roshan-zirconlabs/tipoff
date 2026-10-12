@@ -1,3 +1,4 @@
+import { normalizeHandle } from "@tipoff/core";
 import { isAddress } from "viem";
 import { z } from "zod";
 
@@ -50,6 +51,17 @@ export const relayRequest = z.discriminatedUnion("type", [
   z.object({ type: z.literal("resolve"), programId: uint, candidateId: bytes32, deadline: uint, signature, permit }),
   z.object({ type: z.literal("withdraw"), programId: uint, deadline: uint, signature }),
   z.object({ type: z.literal("proveTip"), tipId: uint, candidateId: bytes32, salt: bytes32 }),
+  /** Makes a proven tip's creator public (wallet + optional Farcaster handle), checked against the commitment. */
+  z.object({
+    type: z.literal("reveal"),
+    tipId: uint,
+    creator: address,
+    salt: bytes32,
+    handle: z
+      .string()
+      .max(20)
+      .refine((v) => v === "" || normalizeHandle(v) === v, "handle"),
+  }),
   z.object({ type: z.literal("settle"), programId: uint, candidateId: bytes32 }),
   z.object({ type: z.literal("returnStake"), tipId: uint }),
   z.object({ type: z.literal("drip"), to: address }),

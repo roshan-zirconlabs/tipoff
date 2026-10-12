@@ -26,4 +26,9 @@ export const CRE_FORWARDER = {
   },
 } as const satisfies Record<number, { production: Address; simulation: Address }>;
 
+/** TipoffReveals: public, commitment-checked reveals of who a winning call named. */
+export const REVEALS = {
+  10143: "0xf267f0603672E791779E52B153BD9A39C9928767",
+} as const satisfies Record<number, Address>;
+
 export const USDC_DECIMALS = 6;

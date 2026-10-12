@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { CallCard } from "@/components/call-card";
 import { ButtonLink } from "@/components/ui";
 import { calls } from "@/lib/calls";
+import { resolveCreators } from "@/lib/server/creators";
 import { loadSnapshot } from "@/lib/server/snapshot";
-import { evidenceCreators } from "@/lib/server/trust";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export default async function CallsPage() {
   const snapshot = await loadSnapshot().catch(() => null);
   const all = snapshot ? calls(snapshot) : [];
-  const creators = snapshot ? await evidenceCreators(snapshot.programs).catch(() => new Map()) : new Map();
+  const creators = snapshot ? await resolveCreators(snapshot).catch(() => new Map()) : new Map();
   return (
     <div className="mx-auto max-w-6xl px-4 pt-12 sm:px-6 md:pt-16">
       <p className="eyebrow">Called it</p>

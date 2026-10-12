@@ -1,3 +1,4 @@
+import { REVEALS } from "@tipoff/core";
 import type { Address } from "viem";
 import { type Chain, defineChain } from "viem";
 import { monad, monadTestnet } from "viem/chains";
@@ -9,6 +10,10 @@ export const config = {
   tipoff: (process.env.NEXT_PUBLIC_TIPOFF_ADDRESS ?? "0x0000000000000000000000000000000000000000") as Address,
   usdc: (process.env.NEXT_PUBLIC_USDC_ADDRESS ?? "0x0000000000000000000000000000000000000000") as Address,
   startBlock: BigInt(process.env.NEXT_PUBLIC_START_BLOCK ?? 0),
+  /** Public reveals of winning calls; local dev passes its own deployment, testnet uses the shared address. */
+  reveals: (process.env.NEXT_PUBLIC_REVEALS_ADDRESS ??
+    (REVEALS as Record<number, string>)[Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 31337)] ??
+    null) as Address | null,
   feeBps: Number(process.env.NEXT_PUBLIC_FEE_BPS ?? 50),
   devTools: process.env.NEXT_PUBLIC_DEV_TOOLS === "1",
   /** The payout token is TestUSDC, with a public faucet (testnet only). */

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ProgramResults } from "@/components/program-results";
 import { ProgramScreen } from "@/components/program-screen";
 import { miniappEmbed } from "@/lib/embed";
+import { resolveCreators } from "@/lib/server/creators";
 import { requestOrigin } from "@/lib/server/origin";
 import { loadSnapshot } from "@/lib/server/snapshot";
 
@@ -38,5 +40,11 @@ export default async function ProgramPage({ params }: Props) {
   if (!Number.isInteger(programId) || programId < 1) notFound();
   const snapshot = await loadSnapshot();
   if (!snapshot.programs.some((p) => p.id === programId)) notFound();
-  return <ProgramScreen id={programId} initial={snapshot} />;
+  const creators = await resolveCreators(snapshot).catch(() => new Map());
+  return (
+    <>
+      <ProgramScreen id={programId} initial={snapshot} />
+      <ProgramResults programId={programId} snapshot={snapshot} creators={creators} />
+    </>
+  );
 }

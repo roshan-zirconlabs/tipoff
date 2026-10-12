@@ -98,7 +98,7 @@ function demoAccount(seed: string) {
 
 const NETWORK = process.argv.includes("--network") ? process.argv[process.argv.indexOf("--network") + 1] : "local";
 
-type Deployment = { tipoff: Address; usdc: Address; startBlock: number; testToken?: Address };
+type Deployment = { tipoff: Address; usdc: Address; startBlock: number; testToken?: Address; reveals?: Address };
 
 function readEnvFile(path: string): Record<string, string> {
   try {
@@ -146,6 +146,7 @@ async function remote(network: keyof typeof REMOTE) {
       `NEXT_PUBLIC_CHAIN_ID=${remoteChain.id}`,
       `NEXT_PUBLIC_RPC_URL=${rpcUrl}`,
       `NEXT_PUBLIC_TIPOFF_ADDRESS=${dep.tipoff}`,
+      ...(dep.reveals ? [`NEXT_PUBLIC_REVEALS_ADDRESS=${dep.reveals}`] : []),
       // On testnet the app runs on TestUSDC, which anyone can drip from the in-app faucet.
       `NEXT_PUBLIC_USDC_ADDRESS=${dep.testToken && dep.testToken !== zeroAddress ? dep.testToken : dep.usdc}`,
       `NEXT_PUBLIC_FAUCET=${dep.testToken && dep.testToken !== zeroAddress ? 1 : 0}`,
@@ -217,6 +218,7 @@ async function main() {
       "NEXT_PUBLIC_CHAIN_ID=31337",
       `NEXT_PUBLIC_RPC_URL=${RPC}`,
       `NEXT_PUBLIC_TIPOFF_ADDRESS=${dep.tipoff}`,
+      ...(dep.reveals ? [`NEXT_PUBLIC_REVEALS_ADDRESS=${dep.reveals}`] : []),
       `NEXT_PUBLIC_USDC_ADDRESS=${dep.usdc}`,
       `NEXT_PUBLIC_START_BLOCK=${dep.startBlock}`,
       "NEXT_PUBLIC_FEE_BPS=50",

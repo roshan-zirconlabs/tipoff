@@ -10,10 +10,10 @@ import { type Call, calls, cleanLabel, verifiedCreator } from "@/lib/calls";
 import { explorerTx } from "@/lib/config";
 import { miniappEmbed } from "@/lib/embed";
 import { dateTime, pad, shortAddress, usdc } from "@/lib/format";
+import { resolveCreators } from "@/lib/server/creators";
 import { profileOwning } from "@/lib/server/farcaster";
 import { requestOrigin } from "@/lib/server/origin";
 import { loadSnapshot } from "@/lib/server/snapshot";
-import { evidenceCreators } from "@/lib/server/trust";
 import { receiptPath, shareLinks, shareText } from "@/lib/share";
 
 export const dynamic = "force-dynamic";
@@ -28,19 +28,16 @@ async function load(props: Props) {
   const snapshot = await loadSnapshot();
   const call = calls(snapshot).find((x) => x.tipId === id);
   if (!call) return null;
-  // Shared with the creator's wallet (verified against the commitment), or known because the patron's payment named it.
-  const creator =
-    verifiedCreator(call, c) ??
-    (call.source === "evidence"
-      ? ((await evidenceCreators(snapshot.programs).catch(() => new Map())).get(
-          `${call.programId}:${call.candidateId}`,
-        ) ?? null)
-      : null);
+  // Shared with the creator's wallet (verified against the commitment), else a public reveal or the evidence payee.
+  const known = (await resolveCreators(snapshot).catch(() => new Map())).get(`${call.programId}:${call.candidateId}`);
+  const creator = verifiedCreator(call, c) ?? known?.wallet ?? null;
   // The scout's own words appear only on a link they shared with the creator's verified wallet.
   const label = verifiedCreator(call, c) ? cleanLabel(n) : null;
   const tip = snapshot.tips.find((t) => t.tipId === id);
   // A Farcaster face only when that handle has verified the very wallet this call named.
-  const profile = await profileOwning(h, creator).catch(() => null);
+  const profile =
+    (await profileOwning(h, creator).catch(() => null)) ??
+    (known?.profile && creator && known.wallet.toLowerCase() === creator.toLowerCase() ? known.profile : null);
   return { call, creator, label: label ?? profile?.displayName ?? null, profile, commitTx: tip?.txHash };
 }
 

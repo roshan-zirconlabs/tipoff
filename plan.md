@@ -52,7 +52,7 @@ gas (added signed `resolveFor` / `withdrawRemainderFor`).
 - [x] Testnet USDC + `cre login` → smoke test and `cre workflow simulate … --broadcast` passed (hit recorded, source = evidence)
 - [x] **Sealed bonding curve (26 Sep):** refundable stakes, curve-priced shares, `returnStake`, sponsor conviction board with
       private implied price; redeployed as v2 (v1 at `0x196d…A547` kept in `deployments/10143-v1.json`), smoke + CRE re-run
-- [ ] **You:** Envio account → API token (`LOGS_RPC_URL`) and Envio Cloud deploy of `indexer/` (`ENVIO_GRAPHQL_URL`)
+- [x] Envio Cloud deploy of `indexer/` (standalone, pnpm 10.32.0) → `ENVIO_GRAPHQL_URL`; the app reads from it
 - [ ] Request CRE production deploy access; then `setResolverConfig(productionForwarder, workflowId, owner)`
 
 Testnet caveat: the simulation forwarder doesn't verify DON signatures, so on testnet evidence is only as trustworthy
@@ -84,7 +84,16 @@ chain requirement). `pnpm preflight:mainnet` stays for after the hackathon.
 - [ ] Settle the seeded hits after 8 Oct (keeper) so receipts show payouts
 - [ ] Farcaster mini app (if Monad works in client wallets — ask in Discord)
 
-### M5 — Submissions (Colosseum 12 Oct, Monad 14 Oct 03:59 UTC) — see docs/SUBMISSION.md
+### M4b — Social polish for Metropolis (7 Oct)
+- [x] Live at https://tipoff-phi.vercel.app (Vercel + Envio); TestUSDC verified; CRE `evidenceApi` → hosted URL
+- [x] Creators as people: tip off by Farcaster @handle (public API, no key) → verified wallet; patron board and
+      receipts show the creator's Farcaster face only when the handle owns the named wallet; handle sealed in the tip
+- [x] "Lucid" UI: ambient drifting light, floating hero stage with cursor depth, tilt cards, scroll parallax, Lenis
+      smooth scroll, live ticker with wins and stakes; transform-only, hydration-safe, off for reduced motion and touch
+- [x] Farcaster mini app embeds (`fc:miniapp` + `fc:frame`, 3:2 images, brand font) on home, programs, receipts
+- [x] Traction plan + JPEG App (Base Batches 003, sunset) lessons → docs/TRACTION.md
+
+ (Colosseum 12 Oct, Monad 14 Oct 03:59 UTC) — see docs/SUBMISSION.md
 - [ ] Traction: 3 real patrons, 15–30 testers (20% of the Social score)
 - [ ] Demo video (≤ 3 min), pitch video (≤ 2 min), logo, repo access, Colosseum weekly updates
 

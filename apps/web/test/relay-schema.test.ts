@@ -73,4 +73,14 @@ describe("relayRequest", () => {
     expect(relayRequest.safeParse(create).success).toBe(false);
     expect(relayRequest.safeParse({ ...create, params: { ...create.params, topK: 3 } }).success).toBe(true);
   });
+
+  it("accepts a reveal only with a valid Farcaster handle or none", () => {
+    const reveal = { type: "reveal", tipId: "7", creator: scout, salt: b32, handle: "nala" };
+    expect(relayRequest.safeParse(reveal).success).toBe(true);
+    expect(relayRequest.safeParse({ ...reveal, handle: "" }).success).toBe(true);
+    expect(relayRequest.safeParse({ ...reveal, handle: "dwr.eth" }).success).toBe(true);
+    expect(relayRequest.safeParse({ ...reveal, handle: "@Nala" }).success).toBe(false);
+    expect(relayRequest.safeParse({ ...reveal, handle: "a".repeat(21) }).success).toBe(false);
+    expect(relayRequest.safeParse({ ...reveal, creator: "0x1234" }).success).toBe(false);
+  });
 });

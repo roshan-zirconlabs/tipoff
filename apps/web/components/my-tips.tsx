@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CandidateKind } from "@tipoff/core";
 import Link from "next/link";
 import { useState } from "react";
-import { ActionError, claimTip, returnStake } from "@/lib/client/actions";
+import { ActionError, claimTip, returnStake, revealTip } from "@/lib/client/actions";
 import { type OpenedTipView, type TipStatus, tipStatus } from "@/lib/client/tips";
 import { dateTime, duration, pad, shortAddress, usdc } from "@/lib/format";
 import { receiptPath } from "@/lib/share";
@@ -46,6 +46,7 @@ export function MyTipRow({
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [returning, setReturning] = useState(false);
+  const [revealing, setRevealing] = useState(false);
   const stake = BigInt(tip.stake);
   const stakeUnlocked = program ? now > program.tipDeadline : false;
 
@@ -73,16 +74,52 @@ export function MyTipRow({
     setBusy(true);
     try {
       await claimTip(tip.tipId, tip.candidateId, p.salt);
+      // Winning calls go public so results and receipts can show who you called. Best-effort: the claim stands either way.
+      const shown = await publish().catch(() => false);
       await qc.invalidateQueries({ queryKey: ["snapshot"] });
       toast({
         title: `Tip #${pad(tip.tipId)} claimed`,
-        body: "You're in the payout. It settles when the claim window closes.",
+        body: shown
+          ? "You're in the payout, and your call is now public on the results."
+          : "You're in the payout. It settles when the claim window closes.",
         tone: "ok",
       });
     } catch (err) {
       toast({ title: "Couldn't claim", body: err instanceof ActionError ? err.message : undefined, tone: "error" });
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Only wallet tips can be revealed: the registry checks the creator against the sealed commitment. */
+  async function publish(): Promise<boolean> {
+    if (!p || p.candidate.kind !== CandidateKind.Wallet) return false;
+    try {
+      await revealTip(tip.tipId, p.candidate.value as `0x${string}`, p.salt, p.handle);
+      return true;
+    } catch (err) {
+      if (err instanceof ActionError && err.code === "AlreadyRevealed") return true;
+      throw err;
+    }
+  }
+
+  async function reveal() {
+    setRevealing(true);
+    try {
+      await publish();
+      toast({
+        title: "Your call is public",
+        body: "It now shows on the program's results and the receipt.",
+        tone: "ok",
+      });
+    } catch (err) {
+      toast({
+        title: "Couldn't make it public",
+        body: err instanceof ActionError ? err.message : undefined,
+        tone: "error",
+      });
+    } finally {
+      setRevealing(false);
     }
   }
 
@@ -140,6 +177,11 @@ export function MyTipRow({
           >
             Share
           </Link>
+        ) : null}
+        {(status.kind === "paid" || status.kind === "claimed") && p?.candidate.kind === CandidateKind.Wallet ? (
+          <Button size="sm" variant="outline" loading={revealing} onClick={reveal}>
+            Make public
+          </Button>
         ) : null}
         {status.kind === "claimable" ? (
           <Button size="sm" variant="signal" loading={busy} onClick={claim}>

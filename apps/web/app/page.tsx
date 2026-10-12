@@ -8,8 +8,8 @@ import { ProgramCard } from "@/components/program-card";
 import { FadeIn, RevealWords, Scribble } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
 import { calls } from "@/lib/calls";
+import { resolveCreators } from "@/lib/server/creators";
 import { loadSnapshot } from "@/lib/server/snapshot";
-import { evidenceCreators } from "@/lib/server/trust";
 import { phaseOf } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export default async function Home() {
   const snapshot = await loadSnapshot().catch(() => null);
   const open = snapshot?.programs.filter((p) => phaseOf(p, snapshot.now) === "tipping").slice(0, 3) ?? [];
   const latestCalls = snapshot ? calls(snapshot).slice(0, 3) : [];
-  const creators = snapshot ? await evidenceCreators(snapshot.programs).catch(() => new Map()) : new Map();
+  const creators = snapshot ? await resolveCreators(snapshot).catch(() => new Map()) : new Map();
 
   return (
     <>

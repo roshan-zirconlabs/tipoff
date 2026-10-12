@@ -29,7 +29,15 @@ import type { Keys, Profile } from "./passkey";
 
 export const browserClient = createPublicClient({ chain, transport: http(config.rpcUrl) });
 
-export class ActionError extends Error {}
+export class ActionError extends Error {
+  constructor(
+    message: string,
+    /** The contract error name when the relay reverted, e.g. "AlreadyRevealed". */
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
 
 async function post(body: RelayRequest): Promise<Extract<RelayResponse, { ok: true }>> {
   let res: Response;
@@ -44,7 +52,7 @@ async function post(body: RelayRequest): Promise<Extract<RelayResponse, { ok: tr
   }
   const json = (await res.json().catch(() => null)) as RelayResponse | null;
   if (!json) throw new ActionError("The server sent an unexpected response.");
-  if (!json.ok) throw new ActionError(json.error);
+  if (!json.ok) throw new ActionError(json.error, json.code);
   return json;
 }
 
@@ -127,6 +135,11 @@ export async function sendTip(input: {
 
 export async function claimTip(tipId: number, candidateId: Hex, salt: Hex): Promise<Hex> {
   return (await post({ type: "proveTip", tipId: `${tipId}`, candidateId, salt })).hash;
+}
+
+/** Publishes who a proven tip named, so receipts and results can show the creator's face. Best-effort. */
+export async function revealTip(tipId: number, creator: Address, salt: Hex, handle?: string | null): Promise<Hex> {
+  return (await post({ type: "reveal", tipId: `${tipId}`, creator, salt, handle: handle ?? "" })).hash;
 }
 
 export async function settleHit(programId: number, candidateId: Hex): Promise<Hex> {

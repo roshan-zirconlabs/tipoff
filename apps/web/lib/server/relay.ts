@@ -1,5 +1,5 @@
 import "server-only";
-import { testUsdcAbi, tipoffAbi } from "@tipoff/core";
+import { testUsdcAbi, tipoffAbi, tipoffRevealsAbi } from "@tipoff/core";
 import { BaseError, ContractFunctionRevertedError, type Hex, parseEther, parseEventLogs } from "viem";
 import { config } from "../config";
 import { friendlyContractError } from "../errors";
@@ -76,6 +76,13 @@ function toCall(req: RelayRequest): Call {
       };
     case "proveTip":
       return { functionName: "proveTip", args: [BigInt(req.tipId), req.candidateId, req.salt] };
+    case "reveal":
+      return {
+        address: config.reveals as `0x${string}`, // checked in relay()
+        abi: tipoffRevealsAbi,
+        functionName: "reveal",
+        args: [BigInt(req.tipId), req.creator, req.salt, req.handle],
+      };
     case "settle":
       return { functionName: "settle", args: [BigInt(req.programId), req.candidateId] };
     case "returnStake":
@@ -109,6 +116,7 @@ export function actorOf(req: RelayRequest): string {
     case "withdraw":
       return `program:${req.programId}`;
     case "proveTip":
+    case "reveal":
     case "returnStake":
       return `tip:${req.tipId}`;
     case "settle":
@@ -134,6 +142,8 @@ export async function relay(req: RelayRequest, actor = actorOf(req)): Promise<Re
   const wallet = relayerClient();
   const call = toCall(req);
   if (req.type === "drip" && !config.faucet) return { ok: false, error: "There's no test faucet on this network." };
+  if (req.type === "reveal" && !config.reveals)
+    return { ok: false, error: "Public reveals aren't set up on this network." };
   const base = { address: config.tipoff, abi: tipoffAbi, account: wallet.account, ...call } as const;
   try {
     // biome-ignore lint/suspicious/noExplicitAny: the call is chosen at runtime from a validated union
