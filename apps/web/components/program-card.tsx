@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { duration, usdc } from "@/lib/format";
+import { isTeamProgram } from "@/lib/team";
 import { type ProgramView, phaseOf } from "@/lib/types";
 import { ArrowUpRight } from "./icons";
 import { Tilt } from "./motion/tilt";
@@ -24,6 +25,9 @@ export function ProgramCard({ program, now }: { program: ProgramView; now: numbe
           ) : (
             <Badge>Closed</Badge>
           )}
+          {isTeamProgram(program.sponsor) ? (
+            <Badge title="A demo program the Tipoff team runs with test funds.">Team demo</Badge>
+          ) : null}
           <ArrowUpRight className="text-ink-3 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ink" />
         </div>
 

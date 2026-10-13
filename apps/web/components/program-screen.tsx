@@ -7,6 +7,7 @@ import { useChainNow, useSnapshot } from "@/lib/client/snapshot";
 import { mineOnly, useOpenedTips } from "@/lib/client/tips";
 import { explorerTx, tokenLabel } from "@/lib/config";
 import { dateTime, duration, feeLabel, shortAddress, shortHash, usdc } from "@/lib/format";
+import { isTeamProgram } from "@/lib/team";
 import { phaseOf, type Snapshot } from "@/lib/types";
 import { AddressMark } from "./account";
 import { ArrowRight, Eye } from "./icons";
@@ -57,6 +58,14 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
               <Badge>Closed</Badge>
             )}
             <Badge>Program {program.id}</Badge>
+            {isTeamProgram(program.sponsor) ? (
+              <Badge
+                tone="ink"
+                title="A demo program the Tipoff team runs with test funds, to show the product end to end."
+              >
+                Team demo
+              </Badge>
+            ) : null}
           </div>
           <h1 className="display mt-5 text-[clamp(2.6rem,6vw,4.6rem)]">{program.metadata.title}</h1>
           <Link
@@ -96,6 +105,12 @@ export function ProgramScreen({ id, initial }: { id: number; initial: Snapshot }
 
       <div className="mt-10 grid gap-8 lg:grid-cols-[1.25fr_1fr]">
         <div className="space-y-8">
+          {isTeamProgram(program.sponsor) ? (
+            <p className="rounded-xl border border-rule bg-paper-2 px-4 py-3 text-sm text-ink-2">
+              This is a demo program the Tipoff team runs with test dollars, so you can try the full flow. Real patrons
+              run their own programs the same way.
+            </p>
+          ) : null}
           {program.metadata.brief || program.metadata.lookingFor ? (
             <section>
               {program.metadata.brief ? (

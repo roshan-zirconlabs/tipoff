@@ -5,6 +5,7 @@ import { Tilt } from "@/components/motion/tilt";
 import type { Call } from "@/lib/calls";
 import type { CreatorView } from "@/lib/creator-view";
 import { dateTime, pad, shortAddress, usdc } from "@/lib/format";
+import { isTeamProgram } from "@/lib/team";
 
 export function daysLabel(days: number): string {
   if (days < 1) return "same day";
@@ -46,6 +47,7 @@ export function CallCard({ call, creator }: { call: Call; creator?: CreatorView 
         </div>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-2">
           Sealed {dateTime(call.committedAt)}. {patron} paid them {dateTime(call.actedAt)}.
+          {isTeamProgram(call.patron) ? <span className="text-ink-3"> · team demo</span> : null}
         </p>
         <div className="mt-auto flex items-center justify-between gap-3 pt-5 text-sm">
           <span className="flex min-w-0 items-center gap-2 text-ink-3">

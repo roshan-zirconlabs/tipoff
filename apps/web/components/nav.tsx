@@ -111,6 +111,11 @@ export function Footer() {
               </Link>
             </li>
             <li>
+              <Link className="hover:text-ink" href="/pitch">
+                The pitch
+              </Link>
+            </li>
+            <li>
               <Link className="hover:text-ink" href="/me">
                 My tips
               </Link>
