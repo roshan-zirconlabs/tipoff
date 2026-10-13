@@ -3,7 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { ArrowRight, ArrowUpRight, Bolt, Check, Clock, Close, Eye, Fingerprint, Lock, Receipt } from "./icons";
+import { ArrowRight, ArrowUpRight, Bolt, Check, Clock, Close, Eye, Fingerprint, Lock, Plus, Receipt } from "./icons";
 import { Logo } from "./logo";
 import { ButtonLink } from "./ui";
 
@@ -56,6 +56,122 @@ function Connector() {
       <ArrowRight className="hidden shrink-0 md:block" />
       <span className="h-6 w-px bg-rule-strong md:hidden" />
     </div>
+  );
+}
+
+/* ─── Charts (on-brand inline SVG; single-hue magnitude, so no categorical palette) ───────────────────────────── */
+
+/**
+ * Conviction curve: stake buys weight on a curve with diminishing returns, so money can't buy the top spot. Shape is
+ * illustrative; the point is the concavity. Two dots show 10× the stake buying only ~3× the weight.
+ */
+function ConvictionCurve() {
+  const W = 480;
+  const H = 240;
+  const L = 16;
+  const R = 16;
+  const T = 18;
+  const B = 34;
+  const pw = W - L - R;
+  const ph = H - T - B;
+  const base = T + ph;
+  const f = (t: number) => t ** 0.45; // concave-increasing: fast then flat
+  const pts = Array.from({ length: 41 }, (_, i) => {
+    const t = i / 40;
+    return [L + t * pw, base - f(t) * ph] as const;
+  });
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const area = `${line} L${L + pw} ${base} L${L} ${base} Z`;
+  const dot = (t: number) => [L + t * pw, base - f(t) * ph] as const;
+  const [ax, ay] = dot(0.1);
+  const [bx, by] = dot(0.95);
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-auto w-full"
+      role="img"
+      aria-label="Weight rises with stake on a curve that flattens: ten times the stake buys roughly three times the weight."
+    >
+      <title>Conviction curve with diminishing returns</title>
+      {/* baseline + axis labels */}
+      <line x1={L} y1={base} x2={L + pw} y2={base} stroke="var(--rule-strong)" strokeWidth="1" />
+      <path d={area} fill="color-mix(in oklab, var(--signal) 14%, transparent)" />
+      <path d={line} fill="none" stroke="var(--signal)" strokeWidth="2.5" strokeLinecap="round" />
+      {/* 10x stake guide */}
+      <line x1={ax} y1={base} x2={ax} y2={ay} stroke="var(--rule-strong)" strokeWidth="1" strokeDasharray="3 3" />
+      <line x1={bx} y1={base} x2={bx} y2={by} stroke="var(--rule-strong)" strokeWidth="1" strokeDasharray="3 3" />
+      <circle cx={ax} cy={ay} r="5" fill="var(--signal)" stroke="var(--card)" strokeWidth="2" />
+      <circle cx={bx} cy={by} r="5" fill="var(--signal)" stroke="var(--card)" strokeWidth="2" />
+      <text x={ax + 8} y={ay - 6} className="numeric" fontSize="12" fill="var(--ink-2)">
+        small stake
+      </text>
+      <text x={bx} y={by - 10} textAnchor="end" className="numeric" fontSize="12" fill="var(--ink)">
+        10× stake · ~3× weight
+      </text>
+      <text x={L} y={H - 10} className="numeric" fontSize="11" fill="var(--ink-3)">
+        stake behind a tip →
+      </text>
+      <text x={L} y={T + 4} className="numeric" fontSize="11" fill="var(--ink-3)">
+        ↑ conviction weight
+      </text>
+    </svg>
+  );
+}
+
+/** Horizontal magnitude bars for the discovery budgets Tipoff is adjacent to. Single hue; values labelled directly. */
+function MarketBars() {
+  const data = [
+    { label: "Influencer marketing", v: 22 },
+    { label: "Affiliate & referral", v: 18 },
+    { label: "Record-label A&R", v: 4 },
+  ];
+  const max = 24;
+  const barH = 30;
+  const gap = 20;
+  const labelW = 148;
+  const trackX = labelW + 12;
+  const W = 520;
+  const trackW = W - trackX - 56;
+  const H = data.length * (barH + gap);
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-auto w-full"
+      role="img"
+      aria-label="Annual spend to find talent and customers: influencer marketing about 22 billion dollars, affiliate and referral about 18 billion, record-label A&R about 4 billion."
+    >
+      <title>Discovery budgets already paid every year</title>
+      {data.map((d, i) => {
+        const y = i * (barH + gap) + 4;
+        const w = Math.max(4, (d.v / max) * trackW);
+        return (
+          <g key={d.label}>
+            <text x={labelW} y={y + barH / 2 + 4} textAnchor="end" fontSize="13" fill="var(--ink-2)">
+              {d.label}
+            </text>
+            <rect
+              x={trackX}
+              y={y}
+              width={trackW}
+              height={barH}
+              rx="6"
+              fill="color-mix(in oklab, var(--ink) 7%, transparent)"
+            />
+            <rect x={trackX} y={y} width={w} height={barH} rx="6" fill="var(--signal)" />
+            <text
+              x={trackX + w + 10}
+              y={y + barH / 2 + 5}
+              className="numeric"
+              fontSize="15"
+              fontWeight="700"
+              fill="var(--ink)"
+            >
+              ${d.v}B
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -280,6 +396,102 @@ const SLIDES: { id: string; render: () => ReactNode }[] = [
     ),
   },
   {
+    id: "built",
+    render: () => (
+      <Slide>
+        <Eyebrow>How we built it</Eyebrow>
+        <h2 className="display mt-4 max-w-3xl text-[clamp(2.2rem,5.5vw,4rem)]">
+          Sealed, enforceable, gasless — by design.
+        </h2>
+        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            {
+              icon: <Fingerprint size={18} />,
+              step: "Mera",
+              title: "One passkey, two keys",
+              body: "Face ID derives the wallet and the key that seals every tip.",
+            },
+            {
+              icon: <Lock size={18} />,
+              step: "Noble",
+              title: "Sealed to the patron",
+              body: "Each tip is X25519-encrypted. Nobody else can read who you called.",
+            },
+            {
+              icon: <Bolt size={18} />,
+              step: "Monad",
+              title: "First is provable",
+              body: "The commitment and timestamp fix your place in line on-chain.",
+            },
+            {
+              icon: <Eye size={18} />,
+              step: "Chainlink CRE",
+              title: "Evidence, not honor",
+              body: "A workflow watches the treasury and records hits from real payments.",
+            },
+            {
+              icon: <Receipt size={18} />,
+              step: "Envio",
+              title: "Reads in ~0.3s",
+              body: "Every event is indexed, so the public pages load instantly.",
+            },
+            {
+              icon: <Check size={18} />,
+              step: "Relayer",
+              title: "No gas, no custody",
+              body: "Signed intents are submitted for you. The relayer never holds funds.",
+            },
+          ].map((n) => (
+            <div key={n.step} className="flex flex-col gap-2 rounded-2xl border border-rule bg-card p-5">
+              <div className="flex items-center gap-2 text-signal-ink">
+                {n.icon}
+                <span className="eyebrow">{n.step}</span>
+              </div>
+              <p className="font-semibold leading-tight tracking-[-0.02em]">{n.title}</p>
+              <p className="text-sm leading-relaxed text-ink-2">{n.body}</p>
+            </div>
+          ))}
+        </div>
+      </Slide>
+    ),
+  },
+  {
+    id: "conviction",
+    render: () => (
+      <Slide>
+        <Eyebrow>The model · not a prediction market</Eyebrow>
+        <h2 className="display mt-4 max-w-3xl text-[clamp(2.2rem,5.5vw,4rem)]">
+          Conviction, <Kicker>not a bet.</Kicker>
+        </h2>
+        <div className="mt-10 grid items-center gap-8 lg:grid-cols-[1.1fr_1fr]">
+          <div className="rounded-2xl border border-rule bg-card p-6">
+            <ConvictionCurve />
+          </div>
+          <ul className="space-y-5">
+            {[
+              [
+                "Stake buys a bigger share",
+                "On a sealed curve with diminishing returns — each extra dollar buys less.",
+              ],
+              ["So money can't buy the top", "The biggest wallet can't outbid being first. Timing wins, not budget."],
+              ["Always refunded, win or lose", "Stakes come back every time. Nobody is anyone else's exit liquidity."],
+            ].map(([t, b]) => (
+              <li key={t} className="flex gap-3">
+                <span className="mt-1 grid size-6 shrink-0 place-items-center rounded-full bg-signal-wash text-signal-ink">
+                  <Check size={14} />
+                </span>
+                <span>
+                  <span className="font-semibold">{t}</span>
+                  <span className="mt-0.5 block text-sm leading-relaxed text-ink-2">{b}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Slide>
+    ),
+  },
+  {
     id: "compare",
     render: () => (
       <Slide>
@@ -314,6 +526,82 @@ const SLIDES: { id: string; render: () => ReactNode }[] = [
               ))}
             </tbody>
           </table>
+        </div>
+      </Slide>
+    ),
+  },
+  {
+    id: "patrons",
+    render: () => (
+      <Slide>
+        <Eyebrow>Who it's for</Eyebrow>
+        <h2 className="display mt-4 max-w-3xl text-[clamp(2.2rem,5.5vw,4rem)]">
+          Anyone who pays to find talent first.
+        </h2>
+        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { icon: <Receipt size={18} />, name: "Labels & A&R", line: "Sign the artist a fan flagged first." },
+            {
+              icon: <Bolt size={18} />,
+              name: "Brands & agencies",
+              line: "Lock in brand-fit creators before they're expensive.",
+            },
+            {
+              icon: <Plus size={18} />,
+              name: "VCs & grant rounds",
+              line: "Back the builder a scout spotted pre-traction.",
+            },
+            { icon: <Eye size={18} />, name: "DAOs & collectives", line: "Commission the artist the community found." },
+            { icon: <Lock size={18} />, name: "Collectors & funds", line: "Buy in before the floor moves." },
+            { icon: <Clock size={18} />, name: "Sports & esports", line: "Scout talent before the bidding war." },
+          ].map((p) => (
+            <div key={p.name} className="flex flex-col gap-2 rounded-2xl border border-rule bg-card p-5">
+              <div className="flex items-center gap-2 text-signal-ink">
+                {p.icon}
+                <span className="font-semibold tracking-[-0.01em] text-ink">{p.name}</span>
+              </div>
+              <p className="text-sm leading-relaxed text-ink-2">{p.line}</p>
+            </div>
+          ))}
+        </div>
+      </Slide>
+    ),
+  },
+  {
+    id: "opportunity",
+    render: () => (
+      <Slide>
+        <Eyebrow>The opportunity</Eyebrow>
+        <h2 className="display mt-4 max-w-3xl text-[clamp(2.2rem,5.5vw,4rem)]">
+          Discovery is already a <Kicker>$40B+</Kicker> line item.
+        </h2>
+        <div className="mt-10 grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
+          <div>
+            <p className="text-sm text-ink-3">
+              Spent every year to find talent and customers — none of it rewards the fan who was first.
+            </p>
+            <div className="mt-5">
+              <MarketBars />
+            </div>
+            <p className="mt-2 text-xs text-ink-3">Industry estimates, 2025. Creator economy overall ≈ $190B/yr.</p>
+          </div>
+          <div className="rounded-2xl border border-rule bg-card p-6">
+            <p className="eyebrow">Protocol revenue</p>
+            <p className="mt-2 text-lg font-semibold leading-snug">0.5% of every finder's fee paid.</p>
+            <p className="text-sm text-ink-2">Capped at 1% in the contract. Illustrative:</p>
+            <dl className="mt-5 space-y-3">
+              {[
+                ["$10M fees paid", "$50K"],
+                ["$100M fees paid", "$500K"],
+                ["$1B fees paid", "$5M"],
+              ].map(([k, v]) => (
+                <div key={k} className="flex items-baseline justify-between gap-3 border-t border-rule pt-3">
+                  <dt className="text-sm text-ink-2">{k}</dt>
+                  <dd className="numeric text-xl font-semibold text-signal-ink">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
       </Slide>
     ),
