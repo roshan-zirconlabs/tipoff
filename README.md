@@ -1,4 +1,4 @@
-# Tipoff: early-supporter rewards that can't be dodged
+# Tipoff: early-supporter rewards that can't be dodged 
 
 **Call it first. Get paid when they make it.** Fans tip off patrons (collectors, DAOs, labels) about creators they
 spotted first. When the patron pays that creator, even without announcing it, the fans who called it earliest get a
